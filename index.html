@@ -840,7 +840,12 @@ document.querySelectorAll('.pill-group').forEach(group=>{
 
 function currentGoalWeight(goal){
   const active = document.querySelector(`.pill-group[data-goal="${goal}"] button.active`);
-  return active ? parseInt(active.dataset.val) : 2;
+  const level = active ? parseInt(active.dataset.val) : 2;
+  // Non-linear scale (Low=1, Med=4, High=10): a strategy that simultaneously dominates two
+  // of the three axes (as Constant Amount does on stability+wealth in the reference case) needs
+  // roughly an order-of-magnitude lean on the third axis to be overridden -- a flat 1/2/3 scale
+  // never gave "High" enough leverage to do that, which made the tool look stuck on one answer.
+  return {1:1, 2:4, 3:10}[level];
 }
 function conservatismCount(){
   return document.querySelectorAll('[data-cons]:checked').length;
@@ -888,19 +893,4 @@ $('findBtn').onclick = ()=>{
   $('finderResults').classList.add('show');
 };
 
-$('applyStratBtn').onclick = ()=>{
-  if(!window._finderSuggestion) return;
-  $('strategy').value = window._finderSuggestion.strategy;
-  syncLabels();
-  $('strategy').scrollIntoView({behavior:'smooth', block:'center'});
-};
-
-$('applyPayBtn').onclick = ()=>{
-  if(!window._finderSuggestion) return;
-  $('prob').value = window._finderSuggestion.prob;
-  $('floor').value = window._finderSuggestion.floor;
-  syncLabels();
-};
-</script>
-</body>
-</html>
+$('applyStratBtn').on

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Safe Spending Rate Calculator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Spectral+SC:wght@600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --paper:#F5F1E4;
+  --paper-dark:#EDE6D3;
+  --ink:#212C37;
+  --ink-soft:#5C6A76;
+  --rule:#C9BFA5;
+  --brass:#9C7A2E;
+  --brass-soft:#C9A24E;
+  --teal:#3E6E63;
+  --teal-soft:#8FB6AC;
+  --rust:#A2402F;
+  --rust-soft:#D89A8C;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:transparent;color:var(--ink);font-family:'Inter',sans-serif;}
+body{padding:0;}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px;}
+
+/* header */
+.masthead{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;}
+.masthead h1{font-family:'Spectral',serif;font-weight:700;font-size:30px;margin:0;letter-spacing:.2px;}
+.masthead .tag{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:1.2px;}
+.masthead .sub{font-family:'Spectral SC',serif;font-size:12px;color:var(--brass);letter-spacing:.5px;text-transform:uppercase;}
+
+.note{font-size:12.5px;color:var(--ink-soft);line-height:1.55;margin:0 0 24px;padding:10px 14px;border-left:2px solid var(--rule);background:var(--paper-dark);}
+.note b{color:var(--ink);}
+
+.grid{display:grid;grid-template-columns:330px 1fr;gap:34px;align-items:start;}
+@media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+/* control panel */
+.panel section{margin-bottom:22px;}
+.panel .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--brass);display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.panel .eyebrow::after{content:"";flex:1;height:1px;background:var(--rule);}
+.field{margin-bottom:13px;}
+.field label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px;}
+.field label span.val{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-weight:500;}
+input[type=range]{width:100%;accent-color:var(--brass);height:4px;}
+input[type=number],select{
+  width:100%;font-family:'IBM Plex Mono',monospace;font-size:13.5px;padding:7px 8px;
+  border:1px solid var(--rule);background:#fff;color:var(--ink);border-radius:2px;
+}
+select{font-family:'Inter',sans-serif;font-size:13px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.strategy-desc{font-size:11.5px;color:var(--ink-soft);line-height:1.5;margin-top:6px;padding:8px 10px;background:var(--paper-dark);border-left:2px solid var(--teal);}
+.toggle{display:flex;border:1px solid var(--ink);border-radius:2px;overflow:hidden;margin-bottom:12px;}
+.toggle button{flex:1;padding:7px 6px;background:#fff;border:none;font-family:'IBM Plex Mono',monospace;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;color:var(--ink-soft);}
+.toggle button.active{background:var(--ink);color:var(--paper);}
+.simple-only{display:none;}
+.simple-only.show{display:block;}
+
+.calc-btn{width:100%;padding:13px;background:var(--ink);color:var(--paper);border:none;font-family:'Spectral SC',serif;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-top:6px;}
+.calc-btn:hover{background:var(--teal);}
+.calc-btn:disabled{opacity:.5;cursor:default;}
+
+/* results */
+.hero{border:1px solid var(--ink);padding:22px 26px;margin-bottom:22px;background:#fff;position:relative;}
+.hero .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--brass);margin-bottom:8px;}
+.hero .rate{font-family:'Spectral',serif;font-size:56px;font-weight:600;line-height:1;color:var(--ink);}
+.hero .rate sup{font-size:24px;font-weight:500;color:var(--brass);}
+.hero .dollar{font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--teal);margin-top:6px;}
+.hero .meta{margin-top:14px;padding-top:12px;border-top:1px solid var(--rule);display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;color:var(--ink-soft);}
+.hero .meta b{display:block;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:500;margin-top:2px;}
+.placeholder{color:var(--ink-soft);font-size:13px;font-style:italic;}
+
+.chart-card{border:1px solid var(--rule);background:#fff;padding:18px 20px 8px;margin-bottom:20px;}
+.chart-card h3{font-family:'Spectral',serif;font-size:16px;margin:0 0 2px;font-weight:600;}
+.chart-card .cdesc{font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;}
+.legend{display:flex;gap:16px;font-size:11px;color:var(--ink-soft);margin-top:6px;flex-wrap:wrap;}
+.legend span{display:inline-flex;align-items:center;gap:5px;}
+.swatch{width:10px;height:10px;border-radius:1px;display:inline-block;}
+
+canvas{width:100%;display:block;}
+
+.footer-note{font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:10px;border-top:1px solid var(--rule);padding-top:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>Safe Spending Rate Calculator</h1>
+      <div class="tag">Solve for the initial withdrawal rate that hits a downside target</div>
+    </div>
+    <div class="sub">PAY-Rule-style calibration</div>
+  </div>
+
+  <p class="note"><b>How this works:</b> instead of picking a spending rule and hoping it holds up, you set a downside line you're not willing to cross &mdash; e.g. "no more than a 10% chance my real portfolio falls below 15% of its starting value by year 30." This tool searches for the highest initial spending rate that respects that line, given a spending strategy, an allocation, and a set of market return assumptions. It's a standalone illustrative build, independent of and not affiliated with Retirement Researcher's PAY Rule&trade; tool.</p>
+
+  <div class="grid">
+
+    <!-- CONTROL PANEL -->
+    <div class="panel">
+
+      <section>
+        <div class="eyebrow">A &nbsp;Portfolio</div>
+        <div class="field">
+          <label>Starting portfolio <span class="val" id="v_portfolio">$1,000,000</span></label>
+          <input type="range" id="portfolio" min="50000" max="5000000" step="10000" value="1000000">
+        </div>
+        <div class="field">
+          <label>Equity allocation <span class="val" id="v_alloc">60% / 40%</span></label>
+          <input type="range" id="alloc" min="0" max="100" step="5" value="60">
+        </div>
+        <div class="field">
+          <label>Time horizon <span class="val" id="v_horizon">30 years</span></label>
+          <input type="range" id="horizon" min="10" max="40" step="1" value="30">
+        </div>
+        <div class="field">
+          <label>Annual fee / expense drag <span class="val" id="v_fee">0.30%</span></label>
+          <input type="range" id="fee" min="0" max="2" step="0.05" value="0.30">
+        </div>
+      </section>
+
+      <section>
+        <div class="eyebrow">B &nbsp;Spending strategy</div>
+        <div class="field">
+          <select id="strategy">
+            <option value="constant">Constant inflation-adjusted (4%-rule style)</option>
+            <option value="fixedpct">Fixed percentage of portfolio</option>
+            <option value="floorceil">Floor &amp; ceiling (Bengen-style, &plusmn;15%/20%)</option>
+            <option value="endowment">Endowment blend (50/50 constant + fixed %)</option>
+          </select>
+          <div class="strategy-desc" id="strategyDesc"></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="eyebrow">C &nbsp;Market assumptions</div>
+        <div class="toggle">
+          <button id="btnHist" class="active">Historical 1928&ndash;2018</button>
+          <button id="btnSimple">Simple (your inputs)</button>
+        </div>
+        <div id="simpleInputs" class="simple-only">
+          <div class="row2">
+            <div class="field"><label>Stock mean (real)</label><input type="number" id="s_mean" value="7.0" step="0.1"></div>
+            <div class="field"><label>Stock std dev</label><input type="number" id="s_std" value="19.0" step="0.5"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Bond mean (real)</label><input type="number" id="b_mean" value="2.0" step="0.1"></div>
+            <div class="field"><label>Bond std dev</label><input type="number" id="b_std" value="7.5" step="0.5"></div>
+          </div>
+          <div class="field"><label>Stock&ndash;bond correlation <span class="val" id="v_corr">0.00</span></label>
+            <input type="range" id="corr" min="-0.8" max="0.8" step="0.05" value="0">
+          </div>
+        </div>
+        <div class="footer-note" id="histNote" style="margin-top:2px;padding-top:0;border-top:none;">Draws bootstrap-resampled year-pairs of real S&amp;P 500 and 10-yr Treasury returns, 1928&ndash;2018 (source: Damodaran/NYU Stern, CPI-deflated). Preserves each year's stock&ndash;bond correlation.</div>
+      </section>
+
+      <section>
+        <div class="eyebrow">D &nbsp;Downside target</div>
+        <div class="row2">
+          <div class="field">
+            <label>Chance of breach <span class="val" id="v_prob">10%</span></label>
+            <input type="range" id="prob" min="1" max="40" step="1" value="10">
+          </div>
+          <div class="field">
+            <label>Wealth floor <span class="val" id="v_floor">15%</span></label>
+            <input type="range" id="floor" min="0" max="60" step="1" value="15">
+          </div>
+        </div>
+        <div class="footer-note" style="margin-top:0;padding-top:0;border-top:none;">"No more than a <span id="probEcho">10</span>% chance that real wealth is below <span id="floorEcho">15</span>% of today's balance by year <span id="horizonEcho">30</span>."</div>
+      </section>
+
+      <button class="calc-btn" id="calcBtn">Solve for spending rate</button>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results">
+      <div class="hero" id="hero">
+        <div class="eyebrow">Solved initial spending rate</div>
+        <div class="placeholder">Set your inputs on the left and press "Solve" to calibrate a rate.</div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Portfolio wealth over time</h3>
+        <div class="cdesc">Real (inflation-adjusted) wealth as a % of starting portfolio, across simulated outcomes.</div>
+        <canvas id="wealthChart" height="260"></canvas>
+        <div class="legend">
+          <span><i class="swatch" style="background:#c9dcd6"></i>10th&ndash;90th percentile</span>
+          <span><i class="swatch" style="background:#8fb6ac"></i>25th&ndash;75th percentile</span>
+          <span><i class="swatch" style="background:#3e6e63"></i>Median</span>
+          <span><i class="swatch" style="background:#a2402f"></i>Wealth floor</span>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Annual spending over time</h3>
+        <div class="cdesc">Real annual withdrawal in today's dollars, across simulated outcomes.</div>
+        <canvas id="spendChart" height="260"></canvas>
+        <div class="legend">
+          <span><i class="swatch" style="background:#e8d9b8"></i>10th&ndash;90th percentile</span>
+          <span><i class="swatch" style="background:#c9a24e"></i>25th&ndash;75th percentile</span>
+          <span><i class="swatch" style="background:#9c7a2e"></i>Median</span>
+        </div>
+      </div>
+
+      <div class="footer-note">Illustrative tool for personal planning discussions only &mdash; not investment, tax, or financial advice, and not a guarantee of future results. Historical mode resamples individual calendar years independently (bootstrap), which does not reproduce the exact sequencing or autocorrelation of real historical periods. Model ignores taxes, Social Security, and other income sources.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const HIST = [{"y":1928,"s":45.5,"b":2.02},{"y":1929,"s":-8.83,"b":3.6},{"y":1930,"s":-20.0,"b":11.69},{"y":1931,"s":-38.07,"b":7.45},{"y":1932,"s":1.82,"b":21.24},{"y":1933,"s":48.85,"b":1.09},{"y":1934,"s":-2.67,"b":6.34},{"y":1935,"s":42.48,"b":1.44},{"y":1936,"s":30.05,"b":3.52},{"y":1937,"s":-37.14,"b":-1.44},{"y":1938,"s":32.98,"b":7.19},{"y":1939,"s":-1.1,"b":4.41},{"y":1940,"s":-11.3,"b":4.66},{"y":1941,"s":-20.65,"b":-10.87},{"y":1942,"s":9.3,"b":-6.18},{"y":1943,"s":21.46,"b":-0.46},{"y":1944,"s":16.35,"b":0.27},{"y":1945,"s":32.83,"b":1.52},{"y":1946,"s":-22.48,"b":-12.7},{"y":1947,"s":-3.34,"b":-7.28},{"y":1948,"s":2.63,"b":-1.01},{"y":1949,"s":20.8,"b":6.87},{"y":1950,"s":23.49,"b":-5.19},{"y":1951,"s":16.68,"b":-5.94},{"y":1952,"s":17.27,"b":1.51},{"y":1953,"s":-1.95,"b":3.36},{"y":1954,"s":53.7,"b":4.06},{"y":1955,"s":32.11,"b":-1.7},{"y":1956,"s":4.32,"b":-5.1},{"y":1957,"s":-12.98,"b":3.79},{"y":1958,"s":41.23,"b":-3.79},{"y":1959,"s":10.15,"b":-4.31},{"y":1960,"s":-1.01,"b":10.14},{"y":1961,"s":25.8,"b":1.38},{"y":1962,"s":-10.01,"b":4.3},{"y":1963,"s":20.63,"b":0.04},{"y":1964,"s":15.3,"b":2.73},{"y":1965,"s":10.28,"b":-1.18},{"y":1966,"s":-12.98,"b":-0.53},{"y":1967,"s":20.15,"b":-4.48},{"y":1968,"s":5.82,"b":-1.38},{"y":1969,"s":-13.6,"b":-10.56},{"y":1970,"s":-1.9,"b":10.59},{"y":1971,"s":10.6,"b":6.31},{"y":1972,"s":14.84,"b":-0.57},{"y":1973,"s":-21.18,"b":-4.65},{"y":1974,"s":-34.04,"b":-9.21},{"y":1975,"s":28.11,"b":-3.11},{"y":1976,"s":18.09,"b":10.6},{"y":1977,"s":-12.82,"b":-5.07},{"y":1978,"s":-2.3,"b":-8.99},{"y":1979,"s":4.62,"b":-11.14},{"y":1980,"s":17.08,"b":-13.78},{"y":1981,"s":-12.5,"b":-0.66},{"y":1982,"s":15.98,"b":27.91},{"y":1983,"s":17.87,"b":-0.57},{"y":1984,"s":2.12,"b":9.41},{"y":1985,"s":26.44,"b":21.11},{"y":1986,"s":17.2,"b":22.93},{"y":1987,"s":1.32,"b":-8.99},{"y":1988,"s":11.61,"b":3.64},{"y":1989,"s":25.64,"b":12.46},{"y":1990,"s":-8.64,"b":0.12},{"y":1991,"s":26.36,"b":11.59},{"y":1992,"s":4.46,"b":6.28},{"y":1993,"s":7.03,"b":11.15},{"y":1994,"s":-1.31,"b":-10.43},{"y":1995,"s":33.8,"b":20.42},{"y":1996,"s":18.74,"b":-1.83},{"y":1997,"s":30.88,"b":8.1},{"y":1998,"s":26.31,"b":13.1},{"y":1999,"s":17.73,"b":-10.64},{"y":2000,"s":-12.01,"b":12.83},{"y":2001,"s":-13.2,"b":3.96},{"y":2002,"s":-23.78,"b":12.44},{"y":2003,"s":25.99,"b":-1.47},{"y":2004,"s":7.24,"b":1.19},{"y":2005,"s":1.36,"b":-0.53},{"y":2006,"s":12.75,"b":-0.57},{"y":2007,"s":1.35,"b":5.89},{"y":2008,"s":-36.61,"b":19.99},{"y":2009,"s":22.61,"b":-13.47},{"y":2010,"s":13.12,"b":6.86},{"y":2011,"s":-0.84,"b":12.7},{"y":2012,"s":13.91,"b":1.21},{"y":2013,"s":30.2,"b":-10.44},{"y":2014,"s":12.66,"b":9.91},{"y":2015,"s":0.65,"b":0.55},{"y":2016,"s":9.5,"b":-1.35},{"y":2017,"s":19.1,"b":0.68},{"y":2018,"s":-6.02,"b":-1.89}];
+
+const STRAT_DESC = {
+  constant: "Spend the same inflation-adjusted dollar amount every year, set as a % of the starting balance. Simple and predictable \u2014 but spending never adjusts down when markets are weak, so the portfolio can run out.",
+  fixedpct: "Withdraw a fixed % of the current balance every year, recalculated annually. The portfolio (almost) never hits zero, but your spending rises and falls directly with markets.",
+  floorceil: "Recalculate spending as a % of the current balance each year, like above, but clamp it within \u201315% / +20% of the initial dollar amount. Bounded flexibility \u2014 spending responds to markets within guardrails.",
+  endowment: "Blend two rules 50/50: half your spending follows the constant inflation-adjusted approach, half follows a fixed % of the current balance. A middle path between stability and responsiveness."
+};
+
+// ---------- random helpers ----------
+function randHistPair(){
+  const i = Math.floor(Math.random()*HIST.length);
+  return {s: HIST[i].s/100, b: HIST[i].b/100};
+}
+function gaussian(){
+  let u=0,v=0;
+  while(u===0) u=Math.random();
+  while(v===0) v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function randSimplePair(p){
+  const z1=gaussian(), z2=gaussian();
+  const s = p.sMean + p.sStd*z1;
+  const b = p.bMean + p.bStd*(p.corr*z1 + Math.sqrt(1-p.corr*p.corr)*z2);
+  return {s,b};
+}
+
+// ---------- percentile ----------
+function percentile(arr, p){
+  const a = arr.slice().sort((x,y)=>x-y);
+  const idx = Math.min(a.length-1, Math.max(0, Math.round(p*(a.length-1))));
+  return a[idx];
+}
+
+// ---------- one simulate pass ----------
+function simulate(cfg, nSims, trackFull){
+  const {rate, wEq, horizon, fee, mode, simpleParams, strategy} = cfg;
+  const terminal = new Array(nSims);
+  const wealthPaths = trackFull ? [] : null;
+  const spendPaths = trackFull ? [] : null;
+  const initialSpend = rate;
+
+  for(let i=0;i<nSims;i++){
+    let portfolio = 1.0;
+    const wPath = trackFull ? [1.0] : null;
+    const sPath = trackFull ? [] : null;
+
+    for(let yr=0; yr<horizon; yr++){
+      const pair = mode==='hist' ? randHistPair() : randSimplePair(simpleParams);
+      const portReturn = wEq*pair.s + (1-wEq)*pair.b - fee;
+
+      let spend;
+      if(strategy==='constant'){
+        spend = portfolio>0 ? initialSpend : 0;
+      } else if(strategy==='fixedpct'){
+        spend = rate*portfolio;
+      } else if(strategy==='floorceil'){
+        const raw = rate*portfolio;
+        const ceil_ = initialSpend*1.20;
+        const floor_ = initialSpend*0.85;
+        spend = Math.min(ceil_, Math.max(floor_, raw));
+      } else { // endowment
+        const constPart = portfolio>0 ? initialSpend : 0;
+        const pctPart = rate*portfolio;
+        spend = 0.5*constPart + 0.5*pctPart;
+      }
+      if(spend>portfolio) spend = portfolio;
+      if(spend<0) spend = 0;
+
+      portfolio -= spend;
+      if(portfolio<0) portfolio=0;
+      portfolio *= (1+portReturn);
+      if(portfolio<0) portfolio=0;
+
+      if(trackFull){ wPath.push(portfolio); sPath.push(spend); }
+    }
+    terminal[i] = portfolio;
+    if(trackFull){ wealthPaths.push(wPath); spendPaths.push(sPath); }
+  }
+  return {terminal, wealthPaths, spendPaths};
+}
+
+function solveRate(cfg, targetProb, floorFrac){
+  let lo=0.003, hi=0.30;
+  for(let iter=0; iter<34; iter++){
+    const mid=(lo+hi)/2;
+    const res = simulate({...cfg, rate:mid}, 1400, false);
+    const p = percentile(res.terminal, targetProb);
+    if(p > floorFrac){ lo = mid; } else { hi = mid; }
+  }
+  return (lo+hi)/2;
+}
+
+function pathPercentilesByYear(paths, horizon, p){
+  const out = new Array(horizon+1);
+  for(let yr=0; yr<=horizon; yr++){
+    const col = paths.map(path => path[yr]);
+    out[yr] = percentile(col, p);
+  }
+  return out;
+}
+function spendPercentilesByYear(paths, horizon, p){
+  const out = new Array(horizon);
+  for(let yr=0; yr<horizon; yr++){
+    const col = paths.map(path => path[yr]);
+    out[yr] = percentile(col, p);
+  }
+  return out;
+}
+
+// ---------- chart drawing ----------
+function drawFan(canvas, years, bands, opts){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 560;
+  const cssH = parseInt(canvas.getAttribute('height')) || 260;
+  canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const padL=54, padR=16, padT=14, padB=28;
+  const plotW = cssW-padL-padR, plotH = cssH-padT-padB;
+
+  let allVals = [];
+  bands.p10.forEach(v=>allVals.push(v));
+  bands.p90.forEach(v=>allVals.push(v));
+  if(opts.floorLine!==undefined) allVals.push(opts.floorLine);
+  let yMax = Math.max(...allVals);
+  let yMin = Math.min(0, Math.min(...allVals));
+  if(yMax===yMin) yMax = yMin+1;
+  yMax *= 1.08;
+
+  const xN = years.length;
+  const xAt = i => padL + (plotW * i/(xN-1));
+  const yAt = v => padT + plotH - (plotH * (v-yMin)/(yMax-yMin));
+
+  // gridlines
+  ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
+  const gridSteps = 4;
+  for(let g=0; g<=gridSteps; g++){
+    const v = yMin + (yMax-yMin)*g/gridSteps;
+    const y = yAt(v);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+    ctx.fillText(opts.yFmt(v), 4, y+3);
+  }
+  // x labels
+  const xTickEvery = Math.max(1, Math.round(xN/8));
+  for(let i=0;i<xN;i+=xTickEvery){
+    ctx.fillText('Y'+years[i], xAt(i)-8, cssH-8);
+  }
+
+  function area(top, bottom, fill){
+    ctx.beginPath();
+    ctx.moveTo(xAt(0), yAt(top[0]));
+    for(let i=1;i<xN;i++) ctx.lineTo(xAt(i), yAt(top[i]));
+    for(let i=xN-1;i>=0;i--) ctx.lineTo(xAt(i), yAt(bottom[i]));
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  area(bands.p90, bands.p10, opts.outerFill);
+  area(bands.p75, bands.p25, opts.innerFill);
+
+  function line(arr, color, width){
+    ctx.beginPath();
+    ctx.moveTo(xAt(0), yAt(arr[0]));
+    for(let i=1;i<xN;i++) ctx.lineTo(xAt(i), yAt(arr[i]));
+    ctx.strokeStyle=color; ctx.lineWidth=width; ctx.stroke();
+  }
+  line(bands.p50, opts.medianColor, 2.2);
+
+  if(opts.floorLine!==undefined){
+    ctx.save();
+    ctx.setLineDash([5,4]);
+    ctx.strokeStyle = '#A2402F'; ctx.lineWidth=1.4;
+    const y = yAt(opts.floorLine);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+    ctx.restore();
+  }
+
+  // axes
+  ctx.strokeStyle = '#212C37'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
+}
+
+// ---------- UI wiring ----------
+const $ = id => document.getElementById(id);
+const fmtUSD = v => '$'+Math.round(v).toLocaleString('en-US');
+const fmtUSDk = v => v>=1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+Math.round(v);
+
+let mode = 'hist';
+$('btnHist').onclick = ()=>{mode='hist'; $('btnHist').classList.add('active'); $('btnSimple').classList.remove('active'); $('simpleInputs').classList.remove('show'); $('histNote').style.display='block';};
+$('btnSimple').onclick = ()=>{mode='simple'; $('btnSimple').classList.add('active'); $('btnHist').classList.remove('active'); $('simpleInputs').classList.add('show'); $('histNote').style.display='none';};
+
+function syncLabels(){
+  $('v_portfolio').textContent = fmtUSD($('portfolio').value);
+  const eq = $('alloc').value;
+  $('v_alloc').textContent = eq+'% / '+(100-eq)+'%';
+  $('v_horizon').textContent = $('horizon').value+' years';
+  $('v_fee').textContent = parseFloat($('fee').value).toFixed(2)+'%';
+  $('v_corr').textContent = parseFloat($('corr').value).toFixed(2);
+  $('v_prob').textContent = $('prob').value+'%';
+  $('v_floor').textContent = $('floor').value+'%';
+  $('probEcho').textContent = $('prob').value;
+  $('floorEcho').textContent = $('floor').value;
+  $('horizonEcho').textContent = $('horizon').value;
+  $('strategyDesc').textContent = STRAT_DESC[$('strategy').value];
+}
+['portfolio','alloc','horizon','fee','corr','prob','floor'].forEach(id=>{
+  $(id).addEventListener('input', syncLabels);
+});
+$('strategy').addEventListener('change', syncLabels);
+syncLabels();
+
+$('calcBtn').onclick = ()=>{
+  $('calcBtn').disabled = true;
+  $('calcBtn').textContent = 'Solving\u2026';
+  setTimeout(runCalc, 30);
+};
+
+function runCalc(){
+  const portfolio0 = parseFloat($('portfolio').value);
+  const wEq = parseFloat($('alloc').value)/100;
+  const horizon = parseInt($('horizon').value);
+  const fee = parseFloat($('fee').value)/100;
+  const strategy = $('strategy').value;
+  const targetProb = parseFloat($('prob').value)/100;
+  const floorFrac = parseFloat($('floor').value)/100;
+
+  const simpleParams = {
+    sMean: parseFloat($('s_mean').value)/100,
+    sStd: parseFloat($('s_std').value)/100,
+    bMean: parseFloat($('b_mean').value)/100,
+    bStd: parseFloat($('b_std').value)/100,
+    corr: parseFloat($('corr').value)
+  };
+
+  const cfg = {wEq, horizon, fee, mode, simpleParams, strategy};
+
+  const solvedRate = solveRate(cfg, targetProb, floorFrac);
+  const finalSim = simulate({...cfg, rate: solvedRate}, 4000, true);
+
+  const years = Array.from({length: horizon+1}, (_,i)=>i);
+  const wealthBands = {
+    p10: pathPercentilesByYear(finalSim.wealthPaths, horizon, 0.10).map(v=>v*100),
+    p25: pathPercentilesByYear(finalSim.wealthPaths, horizon, 0.25).map(v=>v*100),
+    p50: pathPercentilesByYear(finalSim.wealthPaths, horizon, 0.50).map(v=>v*100),
+    p75: pathPercentilesByYear(finalSim.wealthPaths, horizon, 0.75).map(v=>v*100),
+    p90: pathPercentilesByYear(finalSim.wealthPaths, horizon, 0.90).map(v=>v*100),
+  };
+  const spendYears = Array.from({length: horizon}, (_,i)=>i+1);
+  const spendBands = {
+    p10: spendPercentilesByYear(finalSim.spendPaths, horizon, 0.10).map(v=>v*portfolio0),
+    p25: spendPercentilesByYear(finalSim.spendPaths, horizon, 0.25).map(v=>v*portfolio0),
+    p50: spendPercentilesByYear(finalSim.spendPaths, horizon, 0.50).map(v=>v*portfolio0),
+    p75: spendPercentilesByYear(finalSim.spendPaths, horizon, 0.75).map(v=>v*portfolio0),
+    p90: spendPercentilesByYear(finalSim.spendPaths, horizon, 0.90).map(v=>v*portfolio0),
+  };
+
+  const dollarSpend = solvedRate*portfolio0;
+  const finalP10 = percentile(finalSim.terminal, 0.10)*100;
+  const finalP50 = percentile(finalSim.terminal, 0.50)*100;
+  const finalP90 = percentile(finalSim.terminal, 0.90)*100;
+
+  $('hero').innerHTML = `
+    <div class="eyebrow">Solved initial spending rate</div>
+    <div class="rate">${(solvedRate*100).toFixed(2)}<sup>%</sup></div>
+    <div class="dollar">${fmtUSD(dollarSpend)} in year one</div>
+    <div class="meta">
+      <div>10th pct. wealth, yr ${horizon}<b>${finalP10.toFixed(0)}%</b></div>
+      <div>Median wealth, yr ${horizon}<b>${finalP50.toFixed(0)}%</b></div>
+      <div>90th pct. wealth, yr ${horizon}<b>${finalP90.toFixed(0)}%</b></div>
+    </div>`;
+
+  drawFan($('wealthChart'), years, wealthBands, {
+    outerFill:'rgba(143,182,172,0.35)', innerFill:'rgba(62,110,99,0.35)',
+    medianColor:'#2e5048', floorLine: floorFrac*100,
+    yFmt: v=>v.toFixed(0)+'%'
+  });
+  drawFan($('spendChart'), spendYears, spendBands, {
+    outerFill:'rgba(232,217,184,0.55)', innerFill:'rgba(201,162,78,0.45)',
+    medianColor:'#8a6a24',
+    yFmt: v=>fmtUSDk(v)
+  });
+
+  $('calcBtn').disabled = false;
+  $('calcBtn').textContent = 'Solve for spending rate';
+}
+</script>
+</body>
+</html>

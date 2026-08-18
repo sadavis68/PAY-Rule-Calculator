@@ -141,7 +141,7 @@ canvas{width:100%;display:block;}
 
   <div class="finder-card">
     <h2>Strategy Finder</h2>
-    <div class="cdesc">Based on the workshop's own decision criteria: the three competing spending goals, and the characteristics that call for a more conservative PAY Rule. Answer below, then apply the suggestion &mdash; or ignore it and pick a strategy yourself in section B.</div>
+    <div class="cdesc">Based on the workshop's own decision criteria: the three competing spending goals, plus specific features that set certain strategies apart. Answer below, then apply the suggestion &mdash; or ignore it and pick a strategy yourself in section B.</div>
     <div class="finder-cols">
       <div>
         <div class="finder-sub">Which goals matter most?</div>
@@ -165,20 +165,35 @@ canvas{width:100%;display:block;}
         </div>
       </div>
       <div>
-        <div class="finder-sub">Which of these describe you?</div>
+        <div class="finder-sub">Do any of these matter to you?</div>
+        <label class="check-row"><input type="checkbox" data-qual="neverDepletes"> Assurance the portfolio will (almost) never be fully drawn to zero, however bad markets get</label>
+        <label class="check-row"><input type="checkbox" data-qual="ageBased"> Withdrawals tied to an official age-based formula (the IRS RMD methodology), not just market performance</label>
+        <label class="check-row"><input type="checkbox" data-qual="inflationProtect"> A rule that explicitly reacts to high-inflation periods, not just market downturns</label>
+        <label class="check-row"><input type="checkbox" data-qual="uncappedUpside"> Spending that can grow without limit in good markets, while still guaranteeing a firm dollar floor</label>
+      </div>
+    </div>
+
+    <div class="finder-sub" style="margin-top:18px;">Which of these describe you? (calibrates the PAY Rule, not the strategy)</div>
+    <div class="finder-cols">
+      <div>
         <label class="check-row"><input type="checkbox" data-cons="1"> Few reliable income sources (Social Security, pension) outside this portfolio</label>
         <label class="check-row"><input type="checkbox" data-cons="1"> Low flexibility to cut spending &mdash; goals are largely fixed and inflation-adjusted</label>
         <label class="check-row"><input type="checkbox" data-cons="1"> Few reserves, buffer assets, or insurance to absorb a spending shock</label>
+      </div>
+      <div>
         <label class="check-row"><input type="checkbox" data-cons="1"> Strong desire to build in a margin of safety</label>
         <label class="check-row"><input type="checkbox" data-cons="1"> Significant stress about short-term market volatility</label>
         <label class="check-row"><input type="checkbox" data-cons="1"> Significant worry about outliving retirement assets</label>
       </div>
     </div>
+
     <button class="finder-btn" id="findBtn">Find my strategy</button>
 
     <div class="finder-results" id="finderResults">
       <div class="rec-box" id="recBox"></div>
       <table class="rank-table" id="rankTable"></table>
+      <div class="finder-sub" style="margin-top:4px;">Top pick per category</div>
+      <table class="rank-table" id="axisLeaderTable"></table>
       <div class="apply-row">
         <button class="apply-btn" id="applyStratBtn">Use recommended strategy</button>
         <button class="apply-btn secondary" id="applyPayBtn">Apply suggested PAY Rule</button>
@@ -375,18 +390,35 @@ const STRAT_LABEL = {
 };
 
 // Reference figures from the workshop's own case study ($100k initial, 34yr, 10%-chance-below-$10k PAY Rule).
-// spend95 = median real spending at age 95; balance95 = median real portfolio balance at age 95;
+// initRate = initial spending rate; spend95 = median real spending at age 95;
+// balance95 = median real portfolio balance at age 95;
 // range = 90th-10th percentile spread of real spending at age 95 (a volatility proxy).
-// Used only to RANK strategies relative to each other on 3 axes -- not reproduced as this tool's own output.
+// Used only to RANK strategies relative to each other -- not reproduced as this tool's own output.
 const STRAT_PROFILE = {
-  constant:   {spend95:3876, balance95:154511, range:0},
-  fixedpct:   {spend95:1894, balance95:20795,  range:2922},
-  floorceil:  {spend95:4698, balance95:88042,  range:1500},
-  ratchet:    {spend95:4043, balance95:78890,  range:4780},
-  guardrails: {spend95:4677, balance95:120622, range:8182},
-  inflrule:   {spend95:4462, balance95:97385,  range:2547},
-  actuarial:  {spend95:4309, balance95:20350,  range:6418}
+  constant:   {initRate:3.88, spend95:3876, balance95:154511, range:0},
+  fixedpct:   {initRate:8.97, spend95:1894, balance95:20795,  range:2922},
+  floorceil:  {initRate:5.00, spend95:4698, balance95:88042,  range:1500},
+  ratchet:    {initRate:5.21, spend95:4043, balance95:78890,  range:4780},
+  guardrails: {initRate:4.14, spend95:4677, balance95:120622, range:8182},
+  inflrule:   {initRate:4.78, spend95:4462, balance95:97385,  range:2547},
+  actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  range:6418}
 };
+
+// Qualitative differentiators: binary yes/no features not captured by the 3 outcome axes above.
+// Each only contributes to the score when the user checks the matching box.
+const QUAL_STRATS = {
+  neverDepletes:    ['fixedpct','ratchet','actuarial'],
+  ageBased:         ['actuarial'],
+  inflationProtect: ['inflrule'],
+  uncappedUpside:   ['ratchet']
+};
+const QUAL_LABEL = {
+  neverDepletes: 'never (almost) fully depleting',
+  ageBased: 'tying withdrawals to an official age-based formula',
+  inflationProtect: 'explicitly reacting to high-inflation periods',
+  uncappedUpside: 'uncapped upside with a firm dollar floor'
+};
+const QUAL_WEIGHT = 10; // same scale as the "High" numeric dial
 
 function normalize(obj, key, invert){
   const vals = Object.values(obj).map(o=>o[key]);
@@ -400,18 +432,31 @@ function normalize(obj, key, invert){
   return norm;
 }
 
-function computeRecommendation(wSpend, wStability, wWealth){
-  const spendNorm = normalize(STRAT_PROFILE, 'spend95', false);
+function computeRecommendation(wSpend, wStability, wWealth, checkedQuals){
+  const spendNorm = normalize(STRAT_PROFILE, 'initRate', false);
   const wealthNorm = normalize(STRAT_PROFILE, 'balance95', false);
   const stabilityNorm = normalize(STRAT_PROFILE, 'range', true); // lower range = more stable = higher score
+  checkedQuals = checkedQuals || [];
   const rows = Object.keys(STRAT_PROFILE).map(k=>{
-    const score = wSpend*spendNorm[k] + wStability*stabilityNorm[k] + wWealth*wealthNorm[k];
-    return {key:k, score, spend:spendNorm[k], stability:stabilityNorm[k], wealth:wealthNorm[k]};
+    let score = wSpend*spendNorm[k] + wStability*stabilityNorm[k] + wWealth*wealthNorm[k];
+    const matchedQuals = [];
+    for(const q of checkedQuals){
+      if(QUAL_STRATS[q].includes(k)){ score += QUAL_WEIGHT*100; matchedQuals.push(q); }
+    }
+    return {key:k, score, spend:spendNorm[k], stability:stabilityNorm[k], wealth:wealthNorm[k], matchedQuals};
   });
   rows.sort((a,b)=>b.score-a.score);
   return rows;
 }
 
+function axisLeaders(){
+  return {
+    initRate: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].initRate>STRAT_PROFILE[a].initRate?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
+    spend95: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].spend95>STRAT_PROFILE[a].spend95?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
+    stability: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].range<STRAT_PROFILE[a].range?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
+    wealth: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].balance95>STRAT_PROFILE[a].balance95?b[0]:a, Object.keys(STRAT_PROFILE)[0])
+  };
+}
 
 function randHistPair(){
   const i = Math.floor(Math.random()*HIST.length);
@@ -850,36 +895,64 @@ function currentGoalWeight(goal){
 function conservatismCount(){
   return document.querySelectorAll('[data-cons]:checked').length;
 }
+function checkedQualifiers(){
+  return [...document.querySelectorAll('[data-qual]:checked')].map(el=>el.dataset.qual);
+}
 
 const AXIS_LABEL = {spend:'maximizing spending', stability:'avoiding spending cuts', wealth:'preserving wealth'};
+const AXIS_LEADER_LABEL = {
+  initRate: 'Highest initial spending rate',
+  spend95: 'Best long-run sustained spending',
+  stability: 'Most stable year-to-year spending',
+  wealth: 'Best wealth preservation / legacy'
+};
 
 $('findBtn').onclick = ()=>{
   const wSpend = currentGoalWeight('spend');
   const wStability = currentGoalWeight('stability');
   const wWealth = currentGoalWeight('wealth');
-  const ranked = computeRecommendation(wSpend, wStability, wWealth);
+  const quals = checkedQualifiers();
+  const ranked = computeRecommendation(wSpend, wStability, wWealth, quals);
   const top = ranked[0];
 
-  // Identify which goal the user weighted highest, to explain the pick
-  const weights = {spend:wSpend, stability:wStability, wealth:wWealth};
-  const topAxis = Object.keys(weights).reduce((a,b)=>weights[a]>=weights[b]?a:b);
-  const axisScoreField = {spend:'spend95', stability:'range', wealth:'balance95'}[topAxis];
-  const axisVal = STRAT_PROFILE[top.key][axisScoreField];
+  // Explain the pick: lead with a matched qualitative criterion if one applied to the winner,
+  // since that's a more decisive reason than a relative axis weighting.
   let axisSentence;
-  if(topAxis==='spend') axisSentence = `it sustained the highest median spending in the reference case ($${axisVal.toLocaleString()} at age 95, per $100k starting balance).`;
-  else if(topAxis==='stability') axisSentence = `it had the tightest spread between good- and bad-market outcomes in the reference case (a $${axisVal.toLocaleString()} range between the 10th and 90th percentile).`;
-  else axisSentence = `it preserved the most wealth in the reference case ($${axisVal.toLocaleString()} median balance remaining at age 95, per $100k starting balance).`;
+  if(top.matchedQuals.length){
+    const q = top.matchedQuals[0];
+    axisSentence = `you asked for ${QUAL_LABEL[q]} \u2014 ${STRAT_LABEL[top.key]} is built specifically around that.`;
+  } else {
+    const weights = {spend:wSpend, stability:wStability, wealth:wWealth};
+    const topAxis = Object.keys(weights).reduce((a,b)=>weights[a]>=weights[b]?a:b);
+    const axisScoreField = {spend:'initRate', stability:'range', wealth:'balance95'}[topAxis];
+    const axisVal = STRAT_PROFILE[top.key][axisScoreField];
+    if(topAxis==='spend') axisSentence = `you weighted <b>${AXIS_LABEL.spend}</b> highest \u2014 it had the highest initial spending rate in the reference case (${axisVal.toFixed(2)}%).`;
+    else if(topAxis==='stability') axisSentence = `you weighted <b>${AXIS_LABEL.stability}</b> highest \u2014 it had the tightest spread between good- and bad-market outcomes in the reference case (a $${axisVal.toLocaleString()} range between the 10th and 90th percentile).`;
+    else axisSentence = `you weighted <b>${AXIS_LABEL.wealth}</b> highest \u2014 it preserved the most wealth in the reference case ($${axisVal.toLocaleString()} median balance remaining at age 95, per $100k starting balance).`;
+  }
 
   $('recBox').innerHTML = `
     <div class="recTitle">Recommended: ${STRAT_LABEL[top.key]}</div>
-    <div class="recWhy">You weighted <b>${AXIS_LABEL[topAxis]}</b> highest &mdash; among the seven strategies, ${axisSentence}</div>`;
+    <div class="recWhy">Among the seven strategies, ${axisSentence}</div>`;
 
+  const maxScore = ranked[0].score;
   const rows = ranked.map((r,i)=>`
     <tr>
-      <td>${i+1}. ${STRAT_LABEL[r.key]}</td>
-      <td><span class="bar-wrap"><span class="bar-fill" style="width:${r.score.toFixed(0)}%"></span></span></td>
+      <td>${i+1}. ${STRAT_LABEL[r.key]}${r.matchedQuals.length ? ' <span style="color:var(--brass);">\u2713</span>' : ''}</td>
+      <td><span class="bar-wrap"><span class="bar-fill" style="width:${Math.max(2,(r.score/maxScore*100)).toFixed(0)}%"></span></span></td>
     </tr>`).join('');
-  $('rankTable').innerHTML = `<thead><tr><th>Strategy</th><th>Fit to your weighting</th></tr></thead><tbody>${rows}</tbody>`;
+  $('rankTable').innerHTML = `<thead><tr><th>Strategy</th><th>Fit to your answers</th></tr></thead><tbody>${rows}</tbody>`;
+
+  const leaders = axisLeaders();
+  const AXIS_FIELD = {initRate:'initRate', spend95:'spend95', stability:'range', wealth:'balance95'};
+  const leaderRows = Object.keys(leaders).map(axis=>{
+    const field = AXIS_FIELD[axis];
+    const val = STRAT_PROFILE[leaders[axis]][field];
+    const display = axis==='stability' ? `$${val.toLocaleString()} range` :
+                     axis==='initRate' ? `${val.toFixed(2)}%` : `$${val.toLocaleString()}`;
+    return `<tr><td>${AXIS_LEADER_LABEL[axis]}</td><td>${STRAT_LABEL[leaders[axis]]} (${display})</td></tr>`;
+  }).join('');
+  $('axisLeaderTable').innerHTML = `<thead><tr><th>Category</th><th>Leader in reference case</th></tr></thead><tbody>${leaderRows}</tbody>`;
 
   const consCount = conservatismCount();
   const suggProb = Math.max(5, 20 - consCount*2);
@@ -893,4 +966,19 @@ $('findBtn').onclick = ()=>{
   $('finderResults').classList.add('show');
 };
 
-$('applyStratBtn').on
+$('applyStratBtn').onclick = ()=>{
+  if(!window._finderSuggestion) return;
+  $('strategy').value = window._finderSuggestion.strategy;
+  syncLabels();
+  $('strategy').scrollIntoView({behavior:'smooth', block:'center'});
+};
+
+$('applyPayBtn').onclick = ()=>{
+  if(!window._finderSuggestion) return;
+  $('prob').value = window._finderSuggestion.prob;
+  $('floor').value = window._finderSuggestion.floor;
+  syncLabels();
+};
+</script>
+</body>
+</html>

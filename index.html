@@ -248,14 +248,14 @@ canvas{width:100%;display:block;}
         </div>
 
         <div class="field strat-param" data-strat="floorceil">
-          <label>Dollar floor <span class="val" id="v_fcFloor">3.5% of initial</span></label>
+          <label>Spending floor <span class="val" id="v_fcFloor">3.5% of initial</span></label>
           <input type="range" id="fcFloor" min="0" max="10" step="0.1" value="3.5">
-          <label style="margin-top:8px;">Dollar ceiling <span class="val" id="v_fcCap">5.0% of initial</span></label>
+          <label style="margin-top:8px;">Spending ceiling <span class="val" id="v_fcCap">5.0% of initial</span></label>
           <input type="range" id="fcCap" min="1" max="15" step="0.1" value="5.0">
         </div>
 
         <div class="field strat-param" data-strat="ratchet">
-          <label>Dollar floor <span class="val" id="v_rFloor">3.5% of initial</span></label>
+          <label>Spending floor <span class="val" id="v_rFloor">3.5% of initial</span></label>
           <input type="range" id="rFloor" min="0" max="10" step="0.1" value="3.5">
         </div>
 
@@ -312,7 +312,7 @@ canvas{width:100%;display:block;}
             <input type="range" id="prob" min="1" max="40" step="1" value="10">
           </div>
           <div class="field">
-            <label>Wealth floor <span class="val" id="v_floor">15%</span></label>
+            <label>Ending-wealth floor <span class="val" id="v_floor">15%</span></label>
             <input type="range" id="floor" min="0" max="60" step="1" value="15">
           </div>
         </div>
@@ -337,7 +337,7 @@ canvas{width:100%;display:block;}
           <span><i class="swatch" style="background:#c9dcd6"></i>10th&ndash;90th percentile</span>
           <span><i class="swatch" style="background:#8fb6ac"></i>25th&ndash;75th percentile</span>
           <span><i class="swatch" style="background:#3e6e63"></i>Median</span>
-          <span><i class="swatch" style="background:#a2402f"></i>Wealth floor</span>
+          <span><i class="swatch" style="background:#a2402f"></i>Ending-wealth floor</span>
         </div>
       </div>
 
@@ -714,6 +714,32 @@ $('calcBtn').onclick = ()=>{
   setTimeout(runCalc, 30);
 };
 
+function strategyResultNote(strategy, d){
+  const fmt = v => fmtUSD(v);
+  if(strategy==='constant'){
+    return `This strategy pays the same ${fmt(d.dollarSpend)} every year (in today's dollars) &mdash; that's why median spend at year ${d.horizon} is unchanged. The wealth spread (${d.finalP10.toFixed(0)}%&ndash;${d.finalP90.toFixed(0)}%) reflects markets alone, since spending itself never varies.`;
+  }
+  if(strategy==='fixedpct'){
+    return `The <b>${(d.solvedRatePct).toFixed(2)}% rate itself never changes</b> &mdash; it's applied fresh every year to whatever the portfolio is worth that year. So spending moves directly with markets: a bad decade shows up as a spending cut (10th pct: ${fmt(d.spendFinalP10)}), a good one as a raise (90th pct: ${fmt(d.spendFinalP90)}), with no formula adjusting the percentage along the way.`;
+  }
+  if(strategy==='floorceil'){
+    return `The <b>${(d.solvedRatePct).toFixed(2)}% rate itself never changes</b> &mdash; each year it's applied fresh to the current balance, then clamped so the resulting dollar amount never falls below ${fmt(d.fcFloorFrac*d.portfolio0)} or rises above ${fmt(d.fcCapFrac*d.portfolio0)} (today's dollars). The 10th/90th percentile spend figures (${fmt(d.spendFinalP10)} / ${fmt(d.spendFinalP90)}) should sit close to those two bounds, since the strategy is designed to hit them in bad or good markets respectively.`;
+  }
+  if(strategy==='ratchet'){
+    return `The <b>${(d.solvedRatePct).toFixed(2)}% rate itself never changes</b> &mdash; there's no formula that raises it over time. Each year it's applied fresh to the current balance: a bigger balance means more dollars, a smaller one means fewer, down to a floor of ${fmt(d.rFloorFrac*d.portfolio0)} where it stops falling further. Unlike Floor-and-Ceiling, there's no cap on the upside, which is why 90th-percentile spend at year ${d.horizon} (${fmt(d.spendFinalP90)}) can run well above the initial ${fmt(d.dollarSpend)}. Despite the name, spending isn't locked into only rising &mdash; it can fall right along with the portfolio, just never below the floor.`;
+  }
+  if(strategy==='guardrails'){
+    return `Spending stays flat at ${fmt(d.dollarSpend)} (in today's dollars) unless the withdrawal rate against your *current* balance breaches ${(d.gCapFrac*100).toFixed(0)}% or ${(d.gFloorFrac*100).toFixed(0)}% &mdash; then it resets to that boundary. Because those resets compound, this strategy can show a wider spending range (10th: ${fmt(d.spendFinalP10)}, 90th: ${fmt(d.spendFinalP90)}) than its "smooth until triggered" design might suggest.`;
+  }
+  if(strategy==='inflrule'){
+    return `Spending rises with inflation every year, except in years right after the *nominal* (non-inflation-adjusted) portfolio value falls below ${(d.iThreshFrac*100).toFixed(0)}% of its starting nominal value &mdash; in those years the raise is skipped, which is why real spending can drift down over time (10th pct: ${fmt(d.spendFinalP10)}) even though the rule never explicitly cuts spending.`;
+  }
+  if(strategy==='actuarial'){
+    return `Spending is set as a % of the current balance, using an IRS-style percentage that rises automatically with your age (starting age ${d.actAge}). <b style="color:var(--rust);">Remember: this strategy's calibration is flagged unvalidated</b> &mdash; treat these figures as directional only.`;
+  }
+  return '';
+}
+
 function runCalc(){
   const portfolio0 = parseFloat($('portfolio').value);
   const wEq = parseFloat($('alloc').value)/100;
@@ -768,6 +794,9 @@ function runCalc(){
   const finalP10 = percentile(finalSim.terminal, 0.10)*100;
   const finalP50 = percentile(finalSim.terminal, 0.50)*100;
   const finalP90 = percentile(finalSim.terminal, 0.90)*100;
+  const spendFinalP10 = spendBands.p10[spendBands.p10.length-1];
+  const spendFinalP50 = spendBands.p50[spendBands.p50.length-1];
+  const spendFinalP90 = spendBands.p90[spendBands.p90.length-1];
 
   $('hero').innerHTML = `
     <div class="eyebrow">Solved initial spending rate</div>
@@ -777,7 +806,13 @@ function runCalc(){
       <div>10th pct. wealth, yr ${horizon}<b>${finalP10.toFixed(0)}%</b></div>
       <div>Median wealth, yr ${horizon}<b>${finalP50.toFixed(0)}%</b></div>
       <div>90th pct. wealth, yr ${horizon}<b>${finalP90.toFixed(0)}%</b></div>
-    </div>`;
+    </div>
+    <div class="meta" style="margin-top:8px;padding-top:8px;">
+      <div>10th pct. spend, yr ${horizon}<b>${fmtUSD(spendFinalP10)}</b></div>
+      <div>Median spend, yr ${horizon}<b>${fmtUSD(spendFinalP50)}</b></div>
+      <div>90th pct. spend, yr ${horizon}<b>${fmtUSD(spendFinalP90)}</b></div>
+    </div>
+    <div class="strategy-desc" style="margin-top:12px;">${strategyResultNote(strategy, {dollarSpend, spendFinalP10, spendFinalP50, spendFinalP90, finalP10, finalP50, finalP90, horizon, fcFloorFrac, fcCapFrac, rFloorFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge, portfolio0, solvedRatePct: solvedRate*100})}</div>`;
 
   drawFan($('wealthChart'), years, wealthBands, {
     outerFill:'rgba(143,182,172,0.35)', innerFill:'rgba(62,110,99,0.35)',

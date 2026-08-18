@@ -29,6 +29,8 @@ body{padding:0;}
 .masthead h1{font-family:'Spectral',serif;font-weight:700;font-size:30px;margin:0;letter-spacing:.2px;}
 .masthead .tag{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:1.2px;}
 .masthead .sub{font-family:'Spectral SC',serif;font-size:12px;color:var(--brass);letter-spacing:.5px;text-transform:uppercase;}
+.reset-btn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);background:#fff;border:1px solid var(--rule);padding:6px 11px;border-radius:2px;cursor:pointer;white-space:nowrap;}
+.reset-btn:hover{color:var(--rust);border-color:var(--rust);}
 
 .note{font-size:12.5px;color:var(--ink-soft);line-height:1.55;margin:0 0 24px;padding:10px 14px;border-left:2px solid var(--rule);background:var(--paper-dark);}
 .note b{color:var(--ink);}
@@ -134,7 +136,10 @@ canvas{width:100%;display:block;}
       <h1>Safe Spending Rate Calculator</h1>
       <div class="tag">Solve for the initial withdrawal rate that hits a downside target</div>
     </div>
-    <div class="sub">PAY-Rule-style calibration</div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="sub">PAY-Rule-style calibration</div>
+      <button id="resetBtn" class="reset-btn" title="Reset every input back to its default value">&#8635; Reset to defaults</button>
+    </div>
   </div>
 
   <p class="note"><b>How this works:</b> instead of picking a spending rule and hoping it holds up, you set a downside line you're not willing to cross &mdash; e.g. "no more than a 10% chance my real portfolio falls below 15% of its starting value by year 30." This tool searches for the highest initial spending rate that respects that line, given a spending strategy, an allocation, and a set of market return assumptions. It's a standalone illustrative build, independent of and not affiliated with Retirement Researcher's PAY Rule&trade; tool.</p>
@@ -1014,6 +1019,49 @@ $('applyPayBtn').onclick = ()=>{
   $('floor').value = window._finderSuggestion.floor;
   syncLabels();
 };
+
+// ---------- Reset to defaults ----------
+const DEFAULTS = {
+  portfolio:1000000, alloc:60, horizon:30, fee:0.30,
+  fcFloor:3.5, fcCap:5.0, rFloor:3.5, gCap:15, gFloor:3, iThresh:100, actAge:72,
+  s_mean:7.0, s_std:19.0, b_mean:2.0, b_std:7.5, corr:0, i_mean:2.5, i_std:4.0,
+  prob:10, floor:15
+};
+
+function resetAll(){
+  for(const id in DEFAULTS){
+    const el = $(id);
+    if(el) el.value = DEFAULTS[id];
+  }
+  $('strategy').value = 'constant';
+
+  mode = 'hist';
+  $('btnHist').classList.add('active');
+  $('btnSimple').classList.remove('active');
+  $('simpleInputs').classList.remove('show');
+  $('histNote').style.display = 'block';
+
+  document.querySelectorAll('.pill-group').forEach(group=>{
+    group.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    const med = group.querySelector('button[data-val="2"]');
+    if(med) med.classList.add('active');
+  });
+
+  document.querySelectorAll('[data-qual], [data-cons]').forEach(el=>{ el.checked = false; });
+  $('finderResults').classList.remove('show');
+
+  $('hero').innerHTML = `<div class="eyebrow">Solved initial spending rate</div><div class="placeholder">Set your inputs on the left and press "Solve" to calibrate a rate.</div>`;
+  $('diagSummary').textContent = 'Press "Solve for spending rate" to run diagnostics.';
+  $('diagList').innerHTML = '';
+  ['wealthChart','spendChart'].forEach(id=>{
+    const c = $(id);
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0,0,c.width,c.height);
+  });
+
+  syncLabels();
+}
+$('resetBtn').onclick = resetAll;
 </script>
 </body>
 </html>

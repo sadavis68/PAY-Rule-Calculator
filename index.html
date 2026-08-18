@@ -59,6 +59,10 @@ select{font-family:'Inter',sans-serif;font-size:13px;}
 .simple-only{display:none;}
 .simple-only.show{display:block;}
 .strat-param{display:none;padding:10px 12px;background:var(--paper-dark);border-left:2px solid var(--brass);}
+.ref-rate-btn{margin-top:10px;width:100%;padding:6px 8px;background:#fff;border:1px solid var(--teal);color:var(--teal);font-family:'IBM Plex Mono',monospace;font-size:10.5px;cursor:pointer;border-radius:2px;}
+.ref-rate-btn:hover{background:var(--teal);color:#fff;}
+.ref-rate-out{font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;min-height:0;}
+.ref-rate-out.ready{color:var(--ink);}
 
 .calc-btn{width:100%;padding:13px;background:var(--ink);color:var(--paper);border:none;font-family:'Spectral SC',serif;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-top:6px;}
 .calc-btn:hover{background:var(--teal);}
@@ -73,6 +77,7 @@ select{font-family:'Inter',sans-serif;font-size:13px;}
 .hero .meta{margin-top:14px;padding-top:12px;border-top:1px solid var(--rule);display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:11.5px;color:var(--ink-soft);}
 .hero .meta b{display:block;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:500;margin-top:2px;}
 .placeholder{color:var(--ink-soft);font-size:13px;font-style:italic;}
+.feas-warning{background:rgba(162,64,47,0.1);border:1px solid var(--rust);color:var(--rust);font-size:12px;line-height:1.5;padding:9px 11px;margin-bottom:10px;border-radius:2px;}
 
 .chart-card{border:1px solid var(--rule);background:#fff;padding:18px 20px 8px;margin-bottom:20px;}
 .chart-card h3{font-family:'Spectral',serif;font-size:16px;margin:0 0 2px;font-weight:600;}
@@ -174,7 +179,7 @@ canvas{width:100%;display:block;}
         <label class="check-row"><input type="checkbox" data-qual="neverDepletes"> Assurance the portfolio will (almost) never be fully drawn to zero, however bad markets get</label>
         <label class="check-row"><input type="checkbox" data-qual="ageBased"> Withdrawals tied to an official age-based formula (the IRS RMD methodology), not just market performance</label>
         <label class="check-row"><input type="checkbox" data-qual="inflationProtect"> A rule that explicitly reacts to high-inflation periods, not just market downturns</label>
-        <label class="check-row"><input type="checkbox" data-qual="uncappedUpside"> Spending that can grow without limit in good markets, while still guaranteeing a firm dollar floor</label>
+        <label class="check-row"><input type="checkbox" data-qual="uncappedUpside"> Spending that only ever increases &mdash; never a cut, even if that means a bad sequence could still deplete the portfolio</label>
       </div>
     </div>
 
@@ -257,11 +262,18 @@ canvas{width:100%;display:block;}
           <input type="range" id="fcFloor" min="0" max="10" step="0.1" value="3.5">
           <label style="margin-top:8px;">Spending ceiling <span class="val" id="v_fcCap">5.0% of initial</span></label>
           <input type="range" id="fcCap" min="1" max="15" step="0.1" value="5.0">
+          <button type="button" class="ref-rate-btn" data-for="fc">Check safe reference rate for this allocation</button>
+          <div class="ref-rate-out" id="refOut_fc"></div>
         </div>
 
         <div class="field strat-param" data-strat="ratchet">
-          <label>Spending floor <span class="val" id="v_rFloor">3.5% of initial</span></label>
-          <input type="range" id="rFloor" min="0" max="10" step="0.1" value="3.5">
+          <label>Wealth growth trigger <span class="val" id="v_ratchetThresh">50% above starting value (nominal)</span></label>
+          <input type="range" id="ratchetThresh" min="10" max="150" step="5" value="50">
+          <label style="margin-top:8px;">Spending increase per ratchet <span class="val" id="v_ratchetStep">10%</span></label>
+          <input type="range" id="ratchetStep" min="2" max="25" step="1" value="10">
+          <label style="margin-top:8px;">Minimum years between ratchets <span class="val" id="v_ratchetYears">3 years</span></label>
+          <input type="range" id="ratchetYears" min="1" max="10" step="1" value="3">
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">Matches Kitces' "Ratcheting Safe Withdrawal Rate" as described by Wade Pfau: flat inflation-adjusted spending, like Constant Amount, except spending steps up (and only up) whenever the portfolio's <b>nominal</b> (not inflation-adjusted) value grows past the trigger. <a href="https://www.kitces.com/blog/the-ratcheting-safe-withdrawal-rate-a-more-dominant-version-of-the-4-rule/" target="_blank" style="color:var(--teal);">Kitces source.</a> <a href="https://retirementresearcher.com/ratcheting-retirement-spending/" target="_blank" style="color:var(--teal);">Pfau source.</a></div>
         </div>
 
         <div class="field strat-param" data-strat="guardrails">
@@ -383,7 +395,7 @@ const STRAT_DESC = {
   constant: "Bengen's classic: spend the same inflation-adjusted dollar amount every year. Smooth and predictable, but unresponsive \u2014 spending never adjusts down when markets are weak, so the portfolio can be depleted.",
   fixedpct: "The polar opposite of Constant Amount: withdraw a fixed % of the current balance every year, recalculated annually. The portfolio never fully depletes, but annual spending can be extremely volatile.",
   floorceil: "Constant-percent withdrawals, but clamped between a dollar floor and a dollar ceiling (set below). Bounded flexibility \u2014 spending responds to markets, within limits.",
-  ratchet: "Constant-percent withdrawals with the ceiling removed \u2014 only a dollar floor remains. Spending can rise without limit in good markets but never falls below the floor.",
+  ratchet: "Kitces' Ratcheting Safe Withdrawal Rate, as described by Wade Pfau: flat inflation-adjusted spending, like Constant Amount, except spending steps up (never down) whenever the portfolio's nominal (not inflation-adjusted) value grows well past its starting value.",
   guardrails: "Part of Guyton's Decision Rules: spend a constant inflation-adjusted amount, except when the current withdrawal rate (this year's spend \u00f7 current balance) breaches a ceiling or floor \u2014 then spending resets to that boundary rate.",
   inflrule: "Spend a constant inflation-adjusted amount, except skip the inflation raise in any year where the nominal (non-inflation-adjusted) portfolio value has fallen below a set dollar threshold.",
   actuarial: "Spending is set as a multiple of the IRS RMD-table percentage for the retiree's current age, recalibrated each year as both age and portfolio value change. Naturally variable and never depletes to zero."
@@ -399,11 +411,15 @@ const STRAT_LABEL = {
 // balance95 = median real portfolio balance at age 95;
 // range = 90th-10th percentile spread of real spending at age 95 (a volatility proxy).
 // Used only to RANK strategies relative to each other -- not reproduced as this tool's own output.
+// NOTE: the "ratchet" row is NOT from the workshop deck -- it's self-computed under the same
+// case-study assumptions, using Kitces' published Ratcheting SWR mechanism (see STRAT_DESC.ratchet),
+// which is structurally different from the deck's own "Ratcheting Rule" definition. The deck's
+// version and Kitces' version share a name but not a mechanism; this tool implements Kitces'.
 const STRAT_PROFILE = {
   constant:   {initRate:3.88, spend95:3876, balance95:154511, range:0},
   fixedpct:   {initRate:8.97, spend95:1894, balance95:20795,  range:2922},
   floorceil:  {initRate:5.00, spend95:4698, balance95:88042,  range:1500},
-  ratchet:    {initRate:5.21, spend95:4043, balance95:78890,  range:4780},
+  ratchet:    {initRate:3.66, spend95:7141, balance95:105743, range:5840},
   guardrails: {initRate:4.14, spend95:4677, balance95:120622, range:8182},
   inflrule:   {initRate:4.78, spend95:4462, balance95:97385,  range:2547},
   actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  range:6418}
@@ -412,7 +428,7 @@ const STRAT_PROFILE = {
 // Qualitative differentiators: binary yes/no features not captured by the 3 outcome axes above.
 // Each only contributes to the score when the user checks the matching box.
 const QUAL_STRATS = {
-  neverDepletes:    ['fixedpct','ratchet','actuarial'],
+  neverDepletes:    ['fixedpct','actuarial'],
   ageBased:         ['actuarial'],
   inflationProtect: ['inflrule'],
   uncappedUpside:   ['ratchet']
@@ -421,7 +437,7 @@ const QUAL_LABEL = {
   neverDepletes: 'never (almost) fully depleting',
   ageBased: 'tying withdrawals to an official age-based formula',
   inflationProtect: 'explicitly reacting to high-inflation periods',
-  uncappedUpside: 'uncapped upside with a firm dollar floor'
+  uncappedUpside: 'spending that only ever rises, never cuts'
 };
 const QUAL_WEIGHT = 10; // same scale as the "High" numeric dial
 
@@ -491,11 +507,12 @@ function percentile(arr, p){
 // ---------- one simulate pass ----------
 function simulate(cfg, nSims, trackFull){
   const {rate, wEq, horizon, fee, mode, simpleParams, strategy,
-         fcFloorFrac, fcCapFrac, rFloorFrac, gCapFrac, gFloorFrac,
-         iThreshFrac, actAge} = cfg;
+         fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac,
+         iThreshFrac, actAge, ratchetThreshold, ratchetStep, ratchetMinYears} = cfg;
   const terminal = new Array(nSims);
   const wealthPaths = trackFull ? [] : null;
   const spendPaths = trackFull ? [] : null;
+  const ratchetCounts = (trackFull && strategy==='ratchet') ? [] : null;
   const initialSpend = rate;
   // Actuarial: calibrate a multiplier so year-1 spend == rate at the starting age's RMD %
   const actMultiplier = strategy==='actuarial' ? rate*rmdDivisor(actAge) : null;
@@ -505,6 +522,9 @@ function simulate(cfg, nSims, trackFull){
     let baseSpend = initialSpend;      // used by 'guardrails' (resets when a rail is hit)
     let nominalSpend = initialSpend;   // used by 'inflrule'
     let nominalIndex = 1.0;            // used by 'inflrule'
+    let ratchetBase = initialSpend;    // used by 'ratchet' -- only ever steps UP, never down
+    let lastRatchetYr = -Infinity;
+    let ratchetCount = 0;
     const wPath = trackFull ? [1.0] : null;
     const sPath = trackFull ? [] : null;
 
@@ -524,8 +544,18 @@ function simulate(cfg, nSims, trackFull){
         spend = Math.min(fcCapFrac, Math.max(fcFloorFrac, raw));
 
       } else if(strategy==='ratchet'){
-        const raw = rate*portfolio;
-        spend = Math.max(rFloorFrac, raw);
+        // Kitces' ratcheting rule (per Pfau's own description): flat inflation-adjusted spending
+        // (like Constant Amount), except that any time the portfolio's NOMINAL (not inflation-
+        // adjusted) value is more than `ratchetThreshold` above its starting nominal value,
+        // spending steps up by `ratchetStep` (never down), at most once every `ratchetMinYears`.
+        const nominalPortfolioNow = portfolio*nominalIndex;
+        if(nominalPortfolioNow > ratchetThreshold && (yr-lastRatchetYr) >= ratchetMinYears){
+          ratchetBase *= (1+ratchetStep);
+          lastRatchetYr = yr;
+          ratchetCount++;
+        }
+        nominalIndex = nominalIndex*(1+pair.infl);
+        spend = portfolio>0 ? ratchetBase : 0;
 
       } else if(strategy==='guardrails'){
         if(portfolio<=0){ spend = 0; }
@@ -564,8 +594,9 @@ function simulate(cfg, nSims, trackFull){
     }
     terminal[i] = portfolio;
     if(trackFull){ wealthPaths.push(wPath); spendPaths.push(sPath); }
+    if(ratchetCounts){ ratchetCounts.push(ratchetCount); }
   }
-  return {terminal, wealthPaths, spendPaths};
+  return {terminal, wealthPaths, spendPaths, ratchetCounts};
 }
 
 function solveRate(cfg, targetProb, floorFrac){
@@ -577,6 +608,18 @@ function solveRate(cfg, targetProb, floorFrac){
     if(p > floorFrac){ lo = mid; } else { hi = mid; }
   }
   return (lo+hi)/2;
+}
+
+// Even the lowest rate the solver will consider still spends the strategy's own floor/cap/other
+// fixed parameters most years for some strategies -- so a "solved rate" near the search boundary
+// can be a sign the real constraint is those fixed parameters, not the rate. Check for that directly.
+function checkFeasibility(cfg, targetProb, floorFrac){
+  const pAtMin = percentile(simulate({...cfg, rate:0.003}, 2500, false).terminal, targetProb);
+  const pAtMax = percentile(simulate({...cfg, rate:0.30}, 2500, false).terminal, targetProb);
+  return {
+    infeasibleLow: pAtMin < floorFrac,   // breaches the target even at near-zero rate
+    infeasibleHigh: pAtMax > floorFrac   // never breaches the target even at max rate (30%)
+  };
 }
 
 function pathPercentilesByYear(paths, horizon, p){
@@ -695,7 +738,9 @@ function syncLabels(){
   $('strategyDesc').textContent = STRAT_DESC[$('strategy').value];
   $('v_fcFloor').textContent = $('fcFloor').value+'% of initial';
   $('v_fcCap').textContent = $('fcCap').value+'% of initial';
-  $('v_rFloor').textContent = $('rFloor').value+'% of initial';
+  $('v_ratchetThresh').textContent = $('ratchetThresh').value+'% above starting value (nominal)';
+  $('v_ratchetStep').textContent = $('ratchetStep').value+'%';
+  $('v_ratchetYears').textContent = $('ratchetYears').value+' years';
   $('v_gCap').textContent = $('gCap').value+'% of current';
   $('v_gFloor').textContent = $('gFloor').value+'% of current';
   $('v_iThresh').textContent = $('iThresh').value+'% of initial';
@@ -706,7 +751,7 @@ function syncLabels(){
     el.style.display = (el.dataset.strat === strat) ? 'block' : 'none';
   });
 }
-['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','rFloor','gCap','gFloor','iThresh','actAge'].forEach(id=>{
+['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','ratchetThresh','ratchetStep','ratchetYears','gCap','gFloor','iThresh','actAge'].forEach(id=>{
   $(id).addEventListener('input', syncLabels);
 });
 $('strategy').addEventListener('change', syncLabels);
@@ -731,7 +776,10 @@ function strategyResultNote(strategy, d){
     return `The <b>${(d.solvedRatePct).toFixed(2)}% rate itself never changes</b> &mdash; each year it's applied fresh to the current balance, then clamped so the resulting dollar amount never falls below ${fmt(d.fcFloorFrac*d.portfolio0)} or rises above ${fmt(d.fcCapFrac*d.portfolio0)} (today's dollars). The 10th/90th percentile spend figures (${fmt(d.spendFinalP10)} / ${fmt(d.spendFinalP90)}) should sit close to those two bounds, since the strategy is designed to hit them in bad or good markets respectively.`;
   }
   if(strategy==='ratchet'){
-    return `The <b>${(d.solvedRatePct).toFixed(2)}% rate itself never changes</b> &mdash; there's no formula that raises it over time. Each year it's applied fresh to the current balance: a bigger balance means more dollars, a smaller one means fewer, down to a floor of ${fmt(d.rFloorFrac*d.portfolio0)} where it stops falling further. Unlike Floor-and-Ceiling, there's no cap on the upside, which is why 90th-percentile spend at year ${d.horizon} (${fmt(d.spendFinalP90)}) can run well above the initial ${fmt(d.dollarSpend)}. Despite the name, spending isn't locked into only rising &mdash; it can fall right along with the portfolio, just never below the floor.`;
+    const counts = d.ratchetCounts || [];
+    const avgRatchets = counts.length ? (counts.reduce((a,b)=>a+b,0)/counts.length) : 0;
+    const pctNever = counts.length ? (counts.filter(c=>c===0).length/counts.length*100) : 0;
+    return `Spending starts flat at ${fmt(d.dollarSpend)} (in today's dollars) and only ever moves in one direction: any time the portfolio's <b>nominal</b> (unadjusted) value grows more than ${((d.ratchetThreshold-1)*100).toFixed(0)}% above its starting nominal value, spending steps up ${(d.ratchetStep*100).toFixed(0)}% for good &mdash; no more than once every ${d.ratchetMinYears} years. It never cuts spending, but unlike Fixed Percent or Actuarial, it also isn't protected from fully depleting the portfolio in a bad sequence, since between ratchets it behaves exactly like Constant Amount. In this run, spending ratcheted up ${avgRatchets.toFixed(1)} times on average over ${d.horizon} years, and never ratcheted at all in about ${pctNever.toFixed(0)}% of scenarios &mdash; typically the same bad-market scenarios that also drive the worst outcomes for a plain Constant Amount strategy.`;
   }
   if(strategy==='guardrails'){
     return `Spending stays flat at ${fmt(d.dollarSpend)} (in today's dollars) unless the withdrawal rate against your *current* balance breaches ${(d.gCapFrac*100).toFixed(0)}% or ${(d.gFloorFrac*100).toFixed(0)}% &mdash; then it resets to that boundary. Because those resets compound, this strategy can show a wider spending range (10th: ${fmt(d.spendFinalP10)}, 90th: ${fmt(d.spendFinalP90)}) than its "smooth until triggered" design might suggest.`;
@@ -766,16 +814,20 @@ function runCalc(){
 
   const fcFloorFrac = parseFloat($('fcFloor').value)/100;
   const fcCapFrac = parseFloat($('fcCap').value)/100;
-  const rFloorFrac = parseFloat($('rFloor').value)/100;
   const gCapFrac = parseFloat($('gCap').value)/100;
   const gFloorFrac = parseFloat($('gFloor').value)/100;
   const iThreshFrac = parseFloat($('iThresh').value)/100;
   const actAge = parseFloat($('actAge').value);
+  const ratchetThreshold = 1 + parseFloat($('ratchetThresh').value)/100;
+  const ratchetStep = parseFloat($('ratchetStep').value)/100;
+  const ratchetMinYears = parseFloat($('ratchetYears').value);
 
   const cfg = {wEq, horizon, fee, mode, simpleParams, strategy,
-               fcFloorFrac, fcCapFrac, rFloorFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge};
+               fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
+               ratchetThreshold, ratchetStep, ratchetMinYears};
 
   const solvedRate = solveRate(cfg, targetProb, floorFrac);
+  const feasibility = checkFeasibility(cfg, targetProb, floorFrac);
   const finalSim = simulate({...cfg, rate: solvedRate}, 4000, true);
 
   const years = Array.from({length: horizon+1}, (_,i)=>i);
@@ -803,8 +855,16 @@ function runCalc(){
   const spendFinalP50 = spendBands.p50[spendBands.p50.length-1];
   const spendFinalP90 = spendBands.p90[spendBands.p90.length-1];
 
+  let feasibilityWarning = '';
+  if(feasibility.infeasibleLow){
+    feasibilityWarning = `<div class="feas-warning">&#9888; No genuine solution found. Even at a near-zero rate, this strategy still breaches your downside target &mdash; the ${(solvedRate*100).toFixed(2)}% shown is just the solver's search floor, not a real answer. This usually means one of the strategy's own fixed parameters in section B (a spending floor, cap, or threshold) is, by itself, too aggressive for this allocation/horizon &mdash; try lowering it, or loosen the downside target in section D.</div>`;
+  } else if(feasibility.infeasibleHigh){
+    feasibilityWarning = `<div class="feas-warning">&#9888; The downside target is never breached, even at the solver's maximum rate (30%) &mdash; so ${(solvedRate*100).toFixed(2)}% is a search ceiling, not a real optimum. Your target in section D may be looser than this scenario needs; tighten it (lower probability or higher floor) for a meaningful answer.</div>`;
+  }
+
   $('hero').innerHTML = `
     <div class="eyebrow">Solved initial spending rate</div>
+    ${feasibilityWarning}
     <div class="rate">${(solvedRate*100).toFixed(2)}<sup>%</sup></div>
     <div class="dollar">${fmtUSD(dollarSpend)} in year one</div>
     <div class="meta">
@@ -817,7 +877,7 @@ function runCalc(){
       <div>Median spend, yr ${horizon}<b>${fmtUSD(spendFinalP50)}</b></div>
       <div>90th pct. spend, yr ${horizon}<b>${fmtUSD(spendFinalP90)}</b></div>
     </div>
-    <div class="strategy-desc" style="margin-top:12px;">${strategyResultNote(strategy, {dollarSpend, spendFinalP10, spendFinalP50, spendFinalP90, finalP10, finalP50, finalP90, horizon, fcFloorFrac, fcCapFrac, rFloorFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge, portfolio0, solvedRatePct: solvedRate*100})}</div>`;
+    <div class="strategy-desc" style="margin-top:12px;">${strategyResultNote(strategy, {dollarSpend, spendFinalP10, spendFinalP50, spendFinalP90, finalP10, finalP50, finalP90, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge, portfolio0, solvedRatePct: solvedRate*100, ratchetThreshold, ratchetStep, ratchetMinYears, ratchetCounts: finalSim.ratchetCounts})}</div>`;
 
   drawFan($('wealthChart'), years, wealthBands, {
     outerFill:'rgba(143,182,172,0.35)', innerFill:'rgba(62,110,99,0.35)',
@@ -1023,7 +1083,7 @@ $('applyPayBtn').onclick = ()=>{
 // ---------- Reset to defaults ----------
 const DEFAULTS = {
   portfolio:1000000, alloc:60, horizon:30, fee:0.30,
-  fcFloor:3.5, fcCap:5.0, rFloor:3.5, gCap:15, gFloor:3, iThresh:100, actAge:72,
+  fcFloor:3.5, fcCap:5.0, ratchetThresh:50, ratchetStep:10, ratchetYears:3, gCap:15, gFloor:3, iThresh:100, actAge:72,
   s_mean:7.0, s_std:19.0, b_mean:2.0, b_std:7.5, corr:0, i_mean:2.5, i_std:4.0,
   prob:10, floor:15
 };
@@ -1062,6 +1122,37 @@ function resetAll(){
   syncLabels();
 }
 $('resetBtn').onclick = resetAll;
+
+// ---------- Reference rate helper (for floor/ceiling-based strategies) ----------
+document.querySelectorAll('.ref-rate-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    const which = btn.dataset.for;
+    const outEl = $('refOut_'+which);
+    outEl.textContent = 'Calculating\u2026';
+    outEl.classList.remove('ready');
+    setTimeout(()=>{
+      const wEq = parseFloat($('alloc').value)/100;
+      const horizon = parseInt($('horizon').value);
+      const fee = parseFloat($('fee').value)/100;
+      const targetProb = parseFloat($('prob').value)/100;
+      const floorFrac = parseFloat($('floor').value)/100;
+      const simpleParams = {
+        sMean: parseFloat($('s_mean').value)/100, sStd: parseFloat($('s_std').value)/100,
+        bMean: parseFloat($('b_mean').value)/100, bStd: parseFloat($('b_std').value)/100,
+        corr: parseFloat($('corr').value), iMean: parseFloat($('i_mean').value)/100, iStd: parseFloat($('i_std').value)/100
+      };
+      const cfg = {wEq, horizon, fee, mode, simpleParams, strategy:'constant',
+                   fcFloorFrac:0, fcCapFrac:1, gCapFrac:1, gFloorFrac:0, iThreshFrac:1, actAge:72};
+      const refRate = solveRate(cfg, targetProb, floorFrac);
+      const currentFloorPct = parseFloat($('fcFloor').value);
+      const refPct = refRate*100;
+      const safe = currentFloorPct < refPct;
+      outEl.classList.add('ready');
+      outEl.innerHTML = `A flat Constant Amount strategy sustains <b>${refPct.toFixed(2)}%</b> under your current allocation/horizon/target. Your floor is set to <b>${currentFloorPct.toFixed(1)}%</b> &mdash; ${safe ? 'that\u2019s comfortably below it, good.' : '<span style="color:var(--rust);">that\u2019s at or above it, which is likely to break the solver.</span> Try dropping the floor to somewhere under '+refPct.toFixed(1)+'%.'}`;
+    }, 30);
+  };
+});
+
 </script>
 </body>
 </html>

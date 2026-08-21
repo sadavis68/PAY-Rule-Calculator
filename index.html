@@ -349,7 +349,7 @@ canvas{width:100%;display:block;}
 
       <div class="chart-card">
         <h3>Portfolio wealth over time</h3>
-        <div class="cdesc">Real (inflation-adjusted) wealth as a % of starting portfolio, across simulated outcomes.</div>
+        <div class="cdesc">Real (inflation-adjusted) wealth as a % of starting portfolio, across simulated outcomes. Uses a log scale, since good markets can compound wealth far higher than bad markets can shrink it &mdash; on a normal scale the upside would crush the downside into an unreadable sliver.</div>
         <canvas id="wealthChart" height="260"></canvas>
         <div class="legend">
           <span><i class="swatch" style="background:#c9dcd6"></i>10th&ndash;90th percentile</span>
@@ -375,6 +375,37 @@ canvas{width:100%;display:block;}
         <div class="cdesc" id="triggerDesc">Of all simulated scenarios, the % where this strategy's rule actually activated in a given year.</div>
         <canvas id="triggerChart" height="200"></canvas>
         <div class="legend" id="triggerLegend"></div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Strategy comparison</h3>
+        <div class="cdesc">All seven strategies plotted at once across a variable you choose &mdash; see which comes out ahead, and where the ordering flips. Each strategy keeps its own settings from section B; only the X-axis variable changes.</div>
+        <div class="row2" style="margin-top:8px;">
+          <div class="field">
+            <label style="margin-bottom:4px;display:block;">X-axis: what to vary</label>
+            <select id="cmpXVar">
+              <option value="alloc">Equity allocation</option>
+              <option value="horizon">Time horizon</option>
+              <option value="prob">Chance of breach (downside target)</option>
+              <option value="floorT">Wealth floor (downside target)</option>
+              <option value="fee">Annual fee</option>
+            </select>
+          </div>
+          <div class="field">
+            <label style="margin-bottom:4px;display:block;">Y-axis: what to measure</label>
+            <select id="cmpYVar">
+              <option value="rate">Solved initial spending rate</option>
+              <option value="vol">Year-to-year spending volatility</option>
+              <option value="wealth">Median ending wealth (legacy)</option>
+              <option value="depletion">Chance of full depletion</option>
+            </select>
+          </div>
+        </div>
+        <button class="finder-btn" id="cmpBtn" style="margin-top:6px;">Generate comparison</button>
+        <div id="cmpWrap" style="display:none;margin-top:14px;">
+          <canvas id="cmpChart" height="260"></canvas>
+          <div class="legend" id="cmpLegend"></div>
+        </div>
       </div>
 
       <div class="chart-card" id="diagnostics">
@@ -662,6 +693,20 @@ function solveRate(cfg, targetProb, floorFrac){
   return (lo+hi)/2;
 }
 
+// Lower-precision, faster solve used only for the multi-point Strategy Comparison sweep, where
+// dozens of solves are needed per render and relative ordering matters more than exact precision.
+function solveRateFast(cfg, targetProb, floorFrac){
+  let {lo, hi} = effectiveBounds(cfg);
+  if(lo >= hi) return lo;
+  for(let iter=0; iter<20; iter++){
+    const mid=(lo+hi)/2;
+    const res = simulate({...cfg, rate:mid}, 700, false);
+    const p = percentile(res.terminal, targetProb);
+    if(p > floorFrac){ lo = mid; } else { hi = mid; }
+  }
+  return (lo+hi)/2;
+}
+
 // Even the lowest rate the solver will consider still spends the strategy's own floor/cap/other
 // fixed parameters most years for some strategies -- so a "solved rate" near the search boundary
 // can be a sign the real constraint is those fixed parameters, not the rate. Check for that directly.
@@ -717,6 +762,69 @@ const TRIGGER_CONFIG = {
 };
 
 // ---------- chart drawing ----------
+const STRAT_COLORS = {
+  constant:'#212C37', fixedpct:'#9c7a2e', floorceil:'#3e6e63', ratchet:'#a2402f',
+  guardrails:'#5b7fa6', inflrule:'#7a5ea8', actuarial:'#b0a8a0'
+};
+
+function drawMultiLine(canvas, xVals, series, xFmt, yFmt){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 560;
+  const cssH = parseInt(canvas.getAttribute('height')) || 260;
+  canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const padL=50, padR=16, padT=14, padB=28;
+  const plotW = cssW-padL-padR, plotH = cssH-padT-padB;
+
+  let allVals = [];
+  Object.values(series).forEach(arr=>arr.forEach(v=>allVals.push(v)));
+  let yMax = Math.max(...allVals)*1.1, yMin = 0;
+
+  const xN = xVals.length;
+  const xAt = i => padL + (plotW * i/(xN-1));
+  const yAt = v => padT + plotH - (plotH * (v-yMin)/(yMax-yMin));
+
+  ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
+  const gridSteps = 4;
+  for(let g=0; g<=gridSteps; g++){
+    const v = yMin + (yMax-yMin)*g/gridSteps;
+    const y = yAt(v);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+    ctx.fillText(yFmt(v), 4, y+3);
+  }
+  const xTickEvery = Math.max(1, Math.round(xN/8));
+  for(let i=0;i<xN;i+=xTickEvery){
+    ctx.fillText(xFmt(xVals[i]), xAt(i)-12, cssH-8);
+  }
+
+  for(const key of Object.keys(series)){
+    const arr = series[key];
+    const dashed = key==='actuarial';
+    ctx.save();
+    if(dashed) ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(xAt(0), yAt(arr[0]));
+    for(let i=1;i<xN;i++) ctx.lineTo(xAt(i), yAt(arr[i]));
+    ctx.strokeStyle = STRAT_COLORS[key];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+    // small markers
+    for(let i=0;i<xN;i++){
+      ctx.beginPath();
+      ctx.arc(xAt(i), yAt(arr[i]), 2.4, 0, Math.PI*2);
+      ctx.fillStyle = STRAT_COLORS[key];
+      ctx.fill();
+    }
+  }
+
+  ctx.strokeStyle = '#212C37'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
+}
+
 function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
@@ -760,6 +868,20 @@ function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){
   ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
 }
 
+function niceLogTicks(min, max){
+  const ticks = [];
+  let mag = Math.pow(10, Math.floor(Math.log10(Math.max(min,0.001))));
+  let guard = 0;
+  while(mag <= max*1.001 && guard<40){
+    for(const mult of [1,3]){
+      const v = mag*mult;
+      if(v >= min*0.999 && v <= max*1.001) ticks.push(v);
+    }
+    mag *= 10; guard++;
+  }
+  return ticks;
+}
+
 function drawFan(canvas, years, bands, opts){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
@@ -772,27 +894,49 @@ function drawFan(canvas, years, bands, opts){
   const padL=54, padR=16, padT=14, padB=28;
   const plotW = cssW-padL-padR, plotH = cssH-padT-padB;
 
+  const logScale = !!opts.logScale;
+  const floorClamp = opts.floorClamp!==undefined ? opts.floorClamp : 0.5;
+
   let allVals = [];
   bands.p10.forEach(v=>allVals.push(v));
   bands.p90.forEach(v=>allVals.push(v));
   if(opts.floorLine!==undefined) allVals.push(opts.floorLine);
-  let yMax = Math.max(...allVals);
-  let yMin = Math.min(0, Math.min(...allVals));
-  if(yMax===yMin) yMax = yMin+1;
-  yMax *= 1.08;
+
+  let yMax, yMin, rawMax;
+  if(logScale){
+    rawMax = Math.max(...allVals, floorClamp*2) * 1.15;
+    yMax = Math.log10(rawMax);
+    yMin = Math.log10(floorClamp);
+  } else {
+    yMax = Math.max(...allVals);
+    yMin = Math.min(0, Math.min(...allVals));
+    if(yMax===yMin) yMax = yMin+1;
+    yMax *= 1.08;
+  }
 
   const xN = years.length;
   const xAt = i => padL + (plotW * i/(xN-1));
-  const yAt = v => padT + plotH - (plotH * (v-yMin)/(yMax-yMin));
+  const yAt = v => {
+    const vv = logScale ? Math.log10(Math.max(v, floorClamp)) : v;
+    return padT + plotH - (plotH * (vv-yMin)/(yMax-yMin));
+  };
 
   // gridlines
   ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
-  const gridSteps = 4;
-  for(let g=0; g<=gridSteps; g++){
-    const v = yMin + (yMax-yMin)*g/gridSteps;
-    const y = yAt(v);
-    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
-    ctx.fillText(opts.yFmt(v), 4, y+3);
+  if(logScale){
+    niceLogTicks(floorClamp, rawMax).forEach(v=>{
+      const y = yAt(v);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+      ctx.fillText(opts.yFmt(v), 2, y+3);
+    });
+  } else {
+    const gridSteps = 4;
+    for(let g=0; g<=gridSteps; g++){
+      const v = yMin + (yMax-yMin)*g/gridSteps;
+      const y = yAt(v);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+      ctx.fillText(opts.yFmt(v), 4, y+3);
+    }
   }
   // x labels
   const xTickEvery = Math.max(1, Math.round(xN/8));
@@ -1023,7 +1167,8 @@ function runCalc(){
   drawFan($('wealthChart'), years, wealthBands, {
     outerFill:'rgba(143,182,172,0.35)', innerFill:'rgba(62,110,99,0.35)',
     medianColor:'#2e5048', floorLine: floorFrac*100,
-    yFmt: v=>v.toFixed(0)+'%'
+    yFmt: v=>v>=100?v.toFixed(0)+'%':v.toFixed(1)+'%',
+    logScale: true, floorClamp: 0.5
   });
   drawFan($('spendChart'), spendYears, spendBands, {
     outerFill:'rgba(232,217,184,0.55)', innerFill:'rgba(201,162,78,0.45)',
@@ -1275,10 +1420,110 @@ function resetAll(){
     ctx.clearRect(0,0,c.width,c.height);
   });
   $('triggerCard').style.display = 'none';
+  $('cmpWrap').style.display = 'none';
+  $('cmpXVar').value = 'alloc';
+  $('cmpYVar').value = 'rate';
 
   syncLabels();
 }
 $('resetBtn').onclick = resetAll;
+
+// ---------- Strategy Comparison ----------
+const CMP_X_CONFIG = {
+  alloc:   {vals:[0,10,20,30,40,50,60,70,80,90,100], fmt:v=>v+'%'},
+  horizon: {vals:[10,13,16,19,22,25,28,31,34,37,40], fmt:v=>v+'y'},
+  prob:    {vals:[1,5,10,15,20,25,30,35,40], fmt:v=>v+'%'},
+  floorT:  {vals:[0,10,20,30,40,50,60], fmt:v=>v+'%'},
+  fee:     {vals:[0,0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0], fmt:v=>v.toFixed(2)+'%'}
+};
+const CMP_Y_LABEL = {
+  rate:'Solved initial spending rate', vol:'Year-to-year spending volatility (avg % change)',
+  wealth:'Median ending wealth (% of initial)', depletion:'Chance of full depletion'
+};
+
+function computeYMetric(yVar, cfg, rate, targetProb, floorFrac){
+  if(yVar==='rate') return rate*100;
+  const sim = simulate({...cfg, rate}, 2000, true);
+  if(yVar==='wealth'){
+    return percentile(sim.wealthPaths.map(p=>p[p.length-1]), 0.5)*100;
+  }
+  if(yVar==='depletion'){
+    return sim.terminal.filter(v=>v<0.005).length/sim.terminal.length*100;
+  }
+  if(yVar==='vol'){
+    let total=0, count=0;
+    for(const path of sim.spendPaths){
+      for(let yr=1; yr<path.length; yr++){
+        if(path[yr-1]>0){ total += Math.abs(path[yr]-path[yr-1])/path[yr-1]; count++; }
+      }
+    }
+    return count ? (total/count*100) : 0;
+  }
+  return rate*100;
+}
+
+$('cmpBtn').onclick = ()=>{
+  $('cmpBtn').disabled = true;
+  $('cmpBtn').textContent = 'Computing\u2026';
+  setTimeout(runComparison, 30);
+};
+
+function runComparison(){
+  const horizon = parseInt($('horizon').value);
+  const fee = parseFloat($('fee').value)/100;
+  const targetProb = parseFloat($('prob').value)/100;
+  const floorFrac = parseFloat($('floor').value)/100;
+  const simpleParams = {
+    sMean: parseFloat($('s_mean').value)/100, sStd: parseFloat($('s_std').value)/100,
+    bMean: parseFloat($('b_mean').value)/100, bStd: parseFloat($('b_std').value)/100,
+    corr: parseFloat($('corr').value), iMean: parseFloat($('i_mean').value)/100, iStd: parseFloat($('i_std').value)/100
+  };
+  const fcFloorFrac = parseFloat($('fcFloor').value)/100;
+  const fcCapFrac = parseFloat($('fcCap').value)/100;
+  const gCapFrac = parseFloat($('gCap').value)/100;
+  const gFloorFrac = parseFloat($('gFloor').value)/100;
+  const iThreshFrac = parseFloat($('iThresh').value)/100;
+  const actAge = parseFloat($('actAge').value);
+  const ratchetThreshold = 1 + parseFloat($('ratchetThresh').value)/100;
+  const ratchetStep = parseFloat($('ratchetStep').value)/100;
+  const ratchetMinYears = parseFloat($('ratchetYears').value);
+  const wEqCurrent = parseFloat($('alloc').value)/100;
+
+  const baseCfg = {mode, simpleParams, fee, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
+                   ratchetThreshold, ratchetStep, ratchetMinYears, wEq:wEqCurrent};
+
+  const xVar = $('cmpXVar').value;
+  const yVar = $('cmpYVar').value;
+  const xConf = CMP_X_CONFIG[xVar];
+  const xVals = xConf.vals;
+
+  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial'];
+  const series = {};
+  for(const strat of strategies){
+    series[strat] = xVals.map(x=>{
+      let cfg = {...baseCfg, strategy:strat};
+      let prob = targetProb, floor = floorFrac;
+      if(xVar==='alloc') cfg.wEq = x/100;
+      else if(xVar==='horizon') cfg.horizon = x;
+      else if(xVar==='fee') cfg.fee = x/100;
+      else if(xVar==='prob') prob = x/100;
+      else if(xVar==='floorT') floor = x/100;
+      const rate = solveRateFast(cfg, prob, floor);
+      return computeYMetric(yVar, cfg, rate, prob, floor);
+    });
+  }
+
+  const yFmt = yVar==='wealth' ? (v=>v.toFixed(0)+'%') : (v=>v.toFixed(1)+'%');
+  drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt);
+  $('cmpLegend').innerHTML = strategies.map(s=>{
+    const note = s==='actuarial' ? ' (unvalidated, dashed)' : '';
+    return `<span><i class="swatch" style="background:${STRAT_COLORS[s]}"></i>${STRAT_LABEL[s]}${note}</span>`;
+  }).join('');
+  $('cmpWrap').style.display = 'block';
+
+  $('cmpBtn').disabled = false;
+  $('cmpBtn').textContent = 'Generate comparison';
+}
 
 // ---------- Reference rate helper (for floor/ceiling-based strategies) ----------
 document.querySelectorAll('.ref-rate-btn').forEach(btn=>{

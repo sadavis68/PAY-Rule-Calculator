@@ -377,36 +377,6 @@ canvas{width:100%;display:block;}
         <div class="legend" id="triggerLegend"></div>
       </div>
 
-      <div class="chart-card">
-        <h3>Strategy comparison</h3>
-        <div class="cdesc">All seven strategies plotted at once across a variable you choose &mdash; see which comes out ahead, and where the ordering flips. Each strategy keeps its own settings from section B; only the X-axis variable changes.</div>
-        <div class="row2" style="margin-top:8px;">
-          <div class="field">
-            <label style="margin-bottom:4px;display:block;">X-axis: what to vary</label>
-            <select id="cmpXVar">
-              <option value="alloc">Equity allocation</option>
-              <option value="horizon">Time horizon</option>
-              <option value="prob">Chance of breach (downside target)</option>
-              <option value="floorT">Wealth floor (downside target)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label style="margin-bottom:4px;display:block;">Y-axis: what to measure</label>
-            <select id="cmpYVar">
-              <option value="rate">Solved initial spending rate</option>
-              <option value="vol">Year-to-year spending volatility</option>
-              <option value="wealth">Median ending wealth (legacy)</option>
-              <option value="depletion">Chance of full depletion</option>
-            </select>
-          </div>
-        </div>
-        <button class="finder-btn" id="cmpBtn" style="margin-top:6px;">Generate comparison</button>
-        <div id="cmpWrap" style="display:none;margin-top:14px;">
-          <canvas id="cmpChart" height="260"></canvas>
-          <div class="legend" id="cmpLegend"></div>
-        </div>
-      </div>
-
       <div class="chart-card" id="diagnostics">
         <h3>Diagnostics</h3>
         <div class="cdesc">Automatic self-checks that run every time you solve: internal consistency, directional sanity, and a fixed cross-check against published safe-withdrawal-rate research.</div>
@@ -415,6 +385,36 @@ canvas{width:100%;display:block;}
       </div>
 
       <div class="footer-note">Illustrative tool for personal planning discussions only &mdash; not investment, tax, or financial advice, and not a guarantee of future results. Historical mode resamples individual calendar years independently (bootstrap), which does not reproduce the exact sequencing or autocorrelation of real historical periods. Model ignores taxes, Social Security, and other income sources.</div>
+    </div>
+  </div>
+
+  <div class="chart-card" style="margin-top:26px;">
+    <h3>Strategy comparison</h3>
+    <div class="cdesc">All seven strategies plotted at once across a variable you choose &mdash; see which comes out ahead, and where the ordering flips. Each strategy keeps its own settings from section B; only the X-axis variable changes.</div>
+    <div class="row2" style="margin-top:8px;max-width:520px;">
+      <div class="field">
+        <label style="margin-bottom:4px;display:block;">X-axis: what to vary</label>
+        <select id="cmpXVar">
+          <option value="alloc">Equity allocation</option>
+          <option value="horizon">Time horizon</option>
+          <option value="prob">Chance of breach (downside target)</option>
+          <option value="floorT">Wealth floor (downside target)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label style="margin-bottom:4px;display:block;">Y-axis: what to measure</label>
+        <select id="cmpYVar">
+          <option value="rate">Solved initial spending rate</option>
+          <option value="vol">Year-to-year spending volatility</option>
+          <option value="wealth">Median ending wealth (legacy)</option>
+          <option value="depletion">Chance of full depletion</option>
+        </select>
+      </div>
+    </div>
+    <button class="finder-btn" id="cmpBtn" style="margin-top:6px;max-width:260px;">Generate comparison</button>
+    <div id="cmpWrap" style="display:none;margin-top:14px;">
+      <canvas id="cmpChart" height="340"></canvas>
+      <div class="legend" id="cmpLegend"></div>
     </div>
   </div>
 </div>
@@ -780,26 +780,12 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
 
   let allVals = [];
   Object.values(series).forEach(arr=>arr.forEach(v=>allVals.push(v)));
-
-  // Robust axis scaling: a single outlier point (e.g. one strategy's legacy wealth at high equity)
-  // shouldn't force the whole chart to stretch and crush every other line into the bottom few
-  // pixels. Cap the axis at a high percentile of the data instead of the bare maximum, and let
-  // any points above that render pinned at the top edge (flagged to the caller via `clipped`).
-  const sorted = allVals.slice().sort((a,b)=>a-b);
-  const idx = sorted.length ? Math.min(sorted.length-1, Math.ceil(sorted.length*0.85)-1) : 0;
-  const robustCap = sorted.length ? sorted[idx] : 1;
-  const trueMax = sorted.length ? sorted[sorted.length-1] : 1;
-  let yMax = robustCap * 1.15;
-  if(yMax <= 0) yMax = Math.max(trueMax, 1) * 1.15;
+  let yMax = Math.max(...allVals) * 1.1;
   let yMin = 0;
-  const clipped = trueMax > yMax;
 
   const xN = xVals.length;
   const xAt = i => padL + (plotW * i/(xN-1));
-  const yAt = v => {
-    const vv = Math.min(v, yMax);
-    return padT + plotH - (plotH * (vv-yMin)/(yMax-yMin));
-  };
+  const yAt = v => padT + plotH - (plotH * (v-yMin)/(yMax-yMin));
 
   ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
   const gridSteps = 4;
@@ -848,7 +834,7 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
 
   ctx.strokeStyle = '#212C37'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
-  return {clipped};
+  return {clipped:false};
 }
 
 function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){

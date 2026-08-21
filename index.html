@@ -369,6 +369,13 @@ canvas{width:100%;display:block;}
         </div>
       </div>
 
+      <div class="chart-card" id="triggerCard" style="display:none;">
+        <h3 id="triggerTitle">Rule trigger frequency</h3>
+        <div class="cdesc" id="triggerDesc">Of all simulated scenarios, the % where this strategy's rule actually activated in a given year.</div>
+        <canvas id="triggerChart" height="200"></canvas>
+        <div class="legend" id="triggerLegend"></div>
+      </div>
+
       <div class="chart-card" id="diagnostics">
         <h3>Diagnostics</h3>
         <div class="cdesc">Automatic self-checks that run every time you solve: internal consistency, directional sanity, and a fixed cross-check against published safe-withdrawal-rate research.</div>
@@ -409,20 +416,28 @@ const STRAT_LABEL = {
 // Reference figures from the workshop's own case study ($100k initial, 34yr, 10%-chance-below-$10k PAY Rule).
 // initRate = initial spending rate; spend95 = median real spending at age 95;
 // balance95 = median real portfolio balance at age 95;
-// range = 90th-10th percentile spread of real spending at age 95 (a volatility proxy).
+// yoyVol = average year-over-year % change in spending WITHIN a given retirement path (self-computed
+// via this tool's own simulation, at each strategy's own solved rate, under the case-study assumptions
+// below -- not from the workshop deck). This -- not the spread across scenarios at a single future
+// year -- is what "avoid spending cuts" actually means: how much spending jumps around from one year
+// to the next in a typical retirement, not how much outcomes differ between a lucky and unlucky retiree.
+// An earlier version of this table used cross-scenario spread at age 95 as a stand-in for volatility,
+// which ranked Guardrails as the LEAST stable strategy and Fixed Percent as middling -- backwards from
+// the truth (Fixed Percent recalculates spending as a % of a moving balance every single year, so it's
+// intrinsically choppy; Guardrails only resets when a rail is breached, so it's usually smooth).
 // Used only to RANK strategies relative to each other -- not reproduced as this tool's own output.
 // NOTE: the "ratchet" row is NOT from the workshop deck -- it's self-computed under the same
 // case-study assumptions, using Kitces' published Ratcheting SWR mechanism (see STRAT_DESC.ratchet),
 // which is structurally different from the deck's own "Ratcheting Rule" definition. The deck's
 // version and Kitces' version share a name but not a mechanism; this tool implements Kitces'.
 const STRAT_PROFILE = {
-  constant:   {initRate:3.88, spend95:3876, balance95:154511, range:0},
-  fixedpct:   {initRate:8.97, spend95:1894, balance95:20795,  range:2922},
-  floorceil:  {initRate:5.00, spend95:4698, balance95:88042,  range:1500},
-  ratchet:    {initRate:3.66, spend95:7141, balance95:105743, range:5840},
-  guardrails: {initRate:4.14, spend95:4677, balance95:120622, range:8182},
-  inflrule:   {initRate:4.78, spend95:4462, balance95:97385,  range:2547},
-  actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  range:6418}
+  constant:   {initRate:3.88, spend95:3876, balance95:154511, yoyVol:0.31},
+  fixedpct:   {initRate:8.97, spend95:1894, balance95:20795,  yoyVol:8.00},
+  floorceil:  {initRate:5.00, spend95:4698, balance95:88042,  yoyVol:2.54},
+  ratchet:    {initRate:3.66, spend95:7141, balance95:105743, yoyVol:2.10},
+  guardrails: {initRate:4.14, spend95:4677, balance95:120622, yoyVol:1.55},
+  inflrule:   {initRate:4.78, spend95:4462, balance95:97385,  yoyVol:1.20},
+  actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  yoyVol:9.70}
 };
 
 // Qualitative differentiators: binary yes/no features not captured by the 3 outcome axes above.
@@ -456,7 +471,7 @@ function normalize(obj, key, invert){
 function computeRecommendation(wSpend, wStability, wWealth, checkedQuals){
   const spendNorm = normalize(STRAT_PROFILE, 'initRate', false);
   const wealthNorm = normalize(STRAT_PROFILE, 'balance95', false);
-  const stabilityNorm = normalize(STRAT_PROFILE, 'range', true); // lower range = more stable = higher score
+  const stabilityNorm = normalize(STRAT_PROFILE, 'yoyVol', true); // lower year-over-year volatility = more stable = higher score
   checkedQuals = checkedQuals || [];
   const rows = Object.keys(STRAT_PROFILE).map(k=>{
     let score = wSpend*spendNorm[k] + wStability*stabilityNorm[k] + wWealth*wealthNorm[k];
@@ -474,7 +489,7 @@ function axisLeaders(){
   return {
     initRate: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].initRate>STRAT_PROFILE[a].initRate?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
     spend95: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].spend95>STRAT_PROFILE[a].spend95?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
-    stability: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].range<STRAT_PROFILE[a].range?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
+    stability: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].yoyVol<STRAT_PROFILE[a].yoyVol?b[0]:a, Object.keys(STRAT_PROFILE)[0]),
     wealth: Object.entries(STRAT_PROFILE).reduce((a,b)=> b[1].balance95>STRAT_PROFILE[a].balance95?b[0]:a, Object.keys(STRAT_PROFILE)[0])
   };
 }
@@ -513,6 +528,10 @@ function simulate(cfg, nSims, trackFull){
   const wealthPaths = trackFull ? [] : null;
   const spendPaths = trackFull ? [] : null;
   const ratchetCounts = (trackFull && strategy==='ratchet') ? [] : null;
+  // Generic per-year trigger tracking, meaning depends on strategy (see legend building in runCalc):
+  // triggerA = "hit ceiling" / "ratcheted" / "froze inflation raise"; triggerB = "hit floor" (when applicable).
+  const triggerA = trackFull ? [] : null;
+  const triggerB = trackFull ? [] : null;
   const initialSpend = rate;
   // Actuarial: calibrate a multiplier so year-1 spend == rate at the starting age's RMD %
   const actMultiplier = strategy==='actuarial' ? rate*rmdDivisor(actAge) : null;
@@ -527,6 +546,8 @@ function simulate(cfg, nSims, trackFull){
     let ratchetCount = 0;
     const wPath = trackFull ? [1.0] : null;
     const sPath = trackFull ? [] : null;
+    const aPath = trackFull ? new Array(horizon).fill(0) : null;
+    const bPath = trackFull ? new Array(horizon).fill(0) : null;
 
     for(let yr=0; yr<horizon; yr++){
       const pair = mode==='hist' ? randHistPair() : randSimplePair(simpleParams);
@@ -541,7 +562,9 @@ function simulate(cfg, nSims, trackFull){
 
       } else if(strategy==='floorceil'){
         const raw = rate*portfolio;
+        const hitCeil = raw >= fcCapFrac, hitFloor = raw <= fcFloorFrac;
         spend = Math.min(fcCapFrac, Math.max(fcFloorFrac, raw));
+        if(trackFull){ aPath[yr] = hitCeil?1:0; bPath[yr] = hitFloor?1:0; }
 
       } else if(strategy==='ratchet'){
         // Kitces' ratcheting rule (per Pfau's own description): flat inflation-adjusted spending
@@ -549,32 +572,38 @@ function simulate(cfg, nSims, trackFull){
         // adjusted) value is more than `ratchetThreshold` above its starting nominal value,
         // spending steps up by `ratchetStep` (never down), at most once every `ratchetMinYears`.
         const nominalPortfolioNow = portfolio*nominalIndex;
-        if(nominalPortfolioNow > ratchetThreshold && (yr-lastRatchetYr) >= ratchetMinYears){
+        const fired = nominalPortfolioNow > ratchetThreshold && (yr-lastRatchetYr) >= ratchetMinYears;
+        if(fired){
           ratchetBase *= (1+ratchetStep);
           lastRatchetYr = yr;
           ratchetCount++;
         }
         nominalIndex = nominalIndex*(1+pair.infl);
         spend = portfolio>0 ? ratchetBase : 0;
+        if(trackFull){ aPath[yr] = fired?1:0; }
 
       } else if(strategy==='guardrails'){
         if(portfolio<=0){ spend = 0; }
         else {
           const rateNow = baseSpend/portfolio;
-          if(rateNow > gCapFrac){ spend = gCapFrac*portfolio; baseSpend = spend; }
-          else if(rateNow < gFloorFrac){ spend = gFloorFrac*portfolio; baseSpend = spend; }
+          const hitCeil = rateNow > gCapFrac, hitFloor = rateNow < gFloorFrac;
+          if(hitCeil){ spend = gCapFrac*portfolio; baseSpend = spend; }
+          else if(hitFloor){ spend = gFloorFrac*portfolio; baseSpend = spend; }
           else { spend = baseSpend; }
+          if(trackFull){ aPath[yr] = hitCeil?1:0; bPath[yr] = hitFloor?1:0; }
         }
 
       } else if(strategy==='inflrule'){
         const nominalPortfolioPrevEnd = portfolio*nominalIndex;
-        if(nominalPortfolioPrevEnd < iThreshFrac){
+        const frozen = nominalPortfolioPrevEnd < iThreshFrac;
+        if(frozen){
           // freeze: no inflation raise this year
         } else {
           nominalSpend = nominalSpend*(1+pair.infl);
         }
         nominalIndex = nominalIndex*(1+pair.infl);
         spend = portfolio>0 ? nominalSpend/nominalIndex : 0;
+        if(trackFull){ aPath[yr] = frozen?1:0; }
 
       } else { // actuarial
         const age = actAge + yr;
@@ -593,17 +622,26 @@ function simulate(cfg, nSims, trackFull){
       if(trackFull){ wPath.push(portfolio); sPath.push(spend); }
     }
     terminal[i] = portfolio;
-    if(trackFull){ wealthPaths.push(wPath); spendPaths.push(sPath); }
+    if(trackFull){ wealthPaths.push(wPath); spendPaths.push(sPath); triggerA.push(aPath); triggerB.push(bPath); }
     if(ratchetCounts){ ratchetCounts.push(ratchetCount); }
   }
-  return {terminal, wealthPaths, spendPaths, ratchetCounts};
+  return {terminal, wealthPaths, spendPaths, ratchetCounts, triggerA, triggerB};
 }
 
 function solveRate(cfg, targetProb, floorFrac){
   let lo=0.003, hi=0.30;
+  // Dollar Floor-and-Ceiling: once the tested rate is at or below the strategy's own spending
+  // floor, spend gets pinned to that floor regardless of the exact rate -- which means every rate
+  // in that range produces statistically identical outcomes on the downside percentile we're
+  // solving against. Searching that region wastes iterations on pure sampling noise and makes the
+  // bisection wander (verified: solved rate varied by >2 percentage points across identical runs
+  // before this fix). Starting the search at the floor itself removes the flat, uninformative region.
+  if(cfg.strategy==='floorceil' && cfg.fcFloorFrac > lo){
+    lo = cfg.fcFloorFrac;
+  }
   for(let iter=0; iter<34; iter++){
     const mid=(lo+hi)/2;
-    const res = simulate({...cfg, rate:mid}, 1400, false);
+    const res = simulate({...cfg, rate:mid}, 2600, false);
     const p = percentile(res.terminal, targetProb);
     if(p > floorFrac){ lo = mid; } else { hi = mid; }
   }
@@ -614,10 +652,13 @@ function solveRate(cfg, targetProb, floorFrac){
 // fixed parameters most years for some strategies -- so a "solved rate" near the search boundary
 // can be a sign the real constraint is those fixed parameters, not the rate. Check for that directly.
 function checkFeasibility(cfg, targetProb, floorFrac){
-  const pAtMin = percentile(simulate({...cfg, rate:0.003}, 2500, false).terminal, targetProb);
+  // Match solveRate's own effective lower bound -- for Floor-and-Ceiling, testing below the
+  // strategy's own floor just re-tests the same pinned-at-floor outcome (see note in solveRate).
+  const minRate = (cfg.strategy==='floorceil' && cfg.fcFloorFrac > 0.003) ? cfg.fcFloorFrac : 0.003;
+  const pAtMin = percentile(simulate({...cfg, rate:minRate}, 2500, false).terminal, targetProb);
   const pAtMax = percentile(simulate({...cfg, rate:0.30}, 2500, false).terminal, targetProb);
   return {
-    infeasibleLow: pAtMin < floorFrac,   // breaches the target even at near-zero rate
+    infeasibleLow: pAtMin < floorFrac,   // breaches the target even at the lowest meaningful rate
     infeasibleHigh: pAtMax > floorFrac   // never breaches the target even at max rate (30%)
   };
 }
@@ -639,7 +680,72 @@ function spendPercentilesByYear(paths, horizon, p){
   return out;
 }
 
+function triggerPctByYear(paths, horizon){
+  const out = new Array(horizon);
+  const n = paths.length;
+  for(let yr=0; yr<horizon; yr++){
+    let sum = 0;
+    for(let i=0;i<n;i++) sum += paths[i][yr];
+    out[yr] = (sum/n)*100;
+  }
+  return out;
+}
+
+const TRIGGER_CONFIG = {
+  floorceil:  {labelA:'Hit ceiling (spend capped)', colorA:'#9c7a2e', labelB:'Hit floor (spend protected)', colorB:'#a2402f',
+               desc:'Of all simulated scenarios, the % where the calculated spend for that year had to be capped at the ceiling, or protected at the floor, rather than following the raw rate.'},
+  ratchet:    {labelA:'Ratcheted spending up', colorA:'#3e6e63', labelB:null, colorB:null,
+               desc:'Of all simulated scenarios, the % where the portfolio\u2019s nominal value crossed the growth trigger that year, stepping spending up.'},
+  guardrails: {labelA:'Hit ceiling rail (spending cut)', colorA:'#a2402f', labelB:'Hit floor rail (spending raised)', colorB:'#3e6e63',
+               desc:'Of all simulated scenarios, the % where the current withdrawal rate breached a rail that year, forcing a reset.'},
+  inflrule:   {labelA:'Inflation raise skipped (frozen)', colorA:'#a2402f', labelB:null, colorB:null,
+               desc:'Of all simulated scenarios, the % where the nominal portfolio was below the threshold that year, so the usual inflation raise was skipped.'}
+};
+
 // ---------- chart drawing ----------
+function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 560;
+  const cssH = parseInt(canvas.getAttribute('height')) || 200;
+  canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const padL=40, padR=16, padT=14, padB=26;
+  const plotW = cssW-padL-padR, plotH = cssH-padT-padB;
+  const n = years.length;
+  const yAt = v => padT + plotH - (plotH*v/100);
+
+  ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
+  [0,25,50,75,100].forEach(v=>{
+    const y = yAt(v);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(cssW-padR,y); ctx.stroke();
+    ctx.fillText(v+'%', 4, y+3);
+  });
+
+  const slot = plotW/n;
+  const barW = seriesB ? slot*0.38 : slot*0.62;
+  for(let i=0;i<n;i++){
+    const xBase = padL + i*slot + slot*0.5;
+    if(seriesB){
+      ctx.fillStyle = colorA;
+      ctx.fillRect(xBase-barW-1, yAt(seriesA[i]), barW, plotH-(yAt(seriesA[i])-padT));
+      ctx.fillStyle = colorB;
+      ctx.fillRect(xBase+1, yAt(seriesB[i]), barW, plotH-(yAt(seriesB[i])-padT));
+    } else {
+      ctx.fillStyle = colorA;
+      ctx.fillRect(xBase-barW/2, yAt(seriesA[i]), barW, plotH-(yAt(seriesA[i])-padT));
+    }
+  }
+  const xTickEvery = Math.max(1, Math.round(n/8));
+  for(let i=0;i<n;i+=xTickEvery){
+    ctx.fillText('Y'+years[i], padL+i*slot+slot*0.5-8, cssH-8);
+  }
+  ctx.strokeStyle = '#212C37'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
+}
+
 function drawFan(canvas, years, bands, opts){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
@@ -890,6 +996,21 @@ function runCalc(){
     yFmt: v=>fmtUSDk(v)
   });
 
+  const trigCfg = TRIGGER_CONFIG[strategy];
+  if(trigCfg){
+    $('triggerCard').style.display = 'block';
+    $('triggerTitle').textContent = 'Rule trigger frequency \u2014 ' + STRAT_LABEL[strategy];
+    $('triggerDesc').textContent = trigCfg.desc;
+    const seriesA = triggerPctByYear(finalSim.triggerA, horizon);
+    const seriesB = trigCfg.labelB ? triggerPctByYear(finalSim.triggerB, horizon) : null;
+    drawTriggerBars($('triggerChart'), spendYears, seriesA, trigCfg.colorA, seriesB, trigCfg.colorB);
+    let legendHtml = `<span><i class="swatch" style="background:${trigCfg.colorA}"></i>${trigCfg.labelA}</span>`;
+    if(trigCfg.labelB) legendHtml += `<span><i class="swatch" style="background:${trigCfg.colorB}"></i>${trigCfg.labelB}</span>`;
+    $('triggerLegend').innerHTML = legendHtml;
+  } else {
+    $('triggerCard').style.display = 'none';
+  }
+
   runDiagnostics(cfg, solvedRate, targetProb, floorFrac, portfolio0, dollarSpend);
 
   $('calcBtn').disabled = false;
@@ -1024,10 +1145,10 @@ $('findBtn').onclick = ()=>{
   } else {
     const weights = {spend:wSpend, stability:wStability, wealth:wWealth};
     const topAxis = Object.keys(weights).reduce((a,b)=>weights[a]>=weights[b]?a:b);
-    const axisScoreField = {spend:'initRate', stability:'range', wealth:'balance95'}[topAxis];
+    const axisScoreField = {spend:'initRate', stability:'yoyVol', wealth:'balance95'}[topAxis];
     const axisVal = STRAT_PROFILE[top.key][axisScoreField];
     if(topAxis==='spend') axisSentence = `you weighted <b>${AXIS_LABEL.spend}</b> highest \u2014 it had the highest initial spending rate in the reference case (${axisVal.toFixed(2)}%).`;
-    else if(topAxis==='stability') axisSentence = `you weighted <b>${AXIS_LABEL.stability}</b> highest \u2014 it had the tightest spread between good- and bad-market outcomes in the reference case (a $${axisVal.toLocaleString()} range between the 10th and 90th percentile).`;
+    else if(topAxis==='stability') axisSentence = `you weighted <b>${AXIS_LABEL.stability}</b> highest \u2014 it had the smallest average year-to-year swing in spending in the reference case (about ${axisVal.toFixed(1)}% per year, versus up to 9-10% for the choppiest strategies).`;
     else axisSentence = `you weighted <b>${AXIS_LABEL.wealth}</b> highest \u2014 it preserved the most wealth in the reference case ($${axisVal.toLocaleString()} median balance remaining at age 95, per $100k starting balance).`;
   }
 
@@ -1044,11 +1165,11 @@ $('findBtn').onclick = ()=>{
   $('rankTable').innerHTML = `<thead><tr><th>Strategy</th><th>Fit to your answers</th></tr></thead><tbody>${rows}</tbody>`;
 
   const leaders = axisLeaders();
-  const AXIS_FIELD = {initRate:'initRate', spend95:'spend95', stability:'range', wealth:'balance95'};
+  const AXIS_FIELD = {initRate:'initRate', spend95:'spend95', stability:'yoyVol', wealth:'balance95'};
   const leaderRows = Object.keys(leaders).map(axis=>{
     const field = AXIS_FIELD[axis];
     const val = STRAT_PROFILE[leaders[axis]][field];
-    const display = axis==='stability' ? `$${val.toLocaleString()} range` :
+    const display = axis==='stability' ? `${val.toFixed(1)}%/yr avg swing` :
                      axis==='initRate' ? `${val.toFixed(2)}%` : `$${val.toLocaleString()}`;
     return `<tr><td>${AXIS_LEADER_LABEL[axis]}</td><td>${STRAT_LABEL[leaders[axis]]} (${display})</td></tr>`;
   }).join('');
@@ -1113,11 +1234,12 @@ function resetAll(){
   $('hero').innerHTML = `<div class="eyebrow">Solved initial spending rate</div><div class="placeholder">Set your inputs on the left and press "Solve" to calibrate a rate.</div>`;
   $('diagSummary').textContent = 'Press "Solve for spending rate" to run diagnostics.';
   $('diagList').innerHTML = '';
-  ['wealthChart','spendChart'].forEach(id=>{
+  ['wealthChart','spendChart','triggerChart'].forEach(id=>{
     const c = $(id);
     const ctx = c.getContext('2d');
     ctx.clearRect(0,0,c.width,c.height);
   });
+  $('triggerCard').style.display = 'none';
 
   syncLabels();
 }

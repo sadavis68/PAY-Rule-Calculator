@@ -388,7 +388,6 @@ canvas{width:100%;display:block;}
               <option value="horizon">Time horizon</option>
               <option value="prob">Chance of breach (downside target)</option>
               <option value="floorT">Wealth floor (downside target)</option>
-              <option value="fee">Annual fee</option>
             </select>
           </div>
           <div class="field">
@@ -767,7 +766,7 @@ const STRAT_COLORS = {
   guardrails:'#5b7fa6', inflrule:'#7a5ea8', actuarial:'#b0a8a0'
 };
 
-function drawMultiLine(canvas, xVals, series, xFmt, yFmt){
+function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
   const cssH = parseInt(canvas.getAttribute('height')) || 260;
@@ -776,16 +775,31 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt){
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,cssW,cssH);
 
-  const padL=50, padR=16, padT=14, padB=28;
+  const padL=54, padR=16, padT=14, padB=44;
   const plotW = cssW-padL-padR, plotH = cssH-padT-padB;
 
   let allVals = [];
   Object.values(series).forEach(arr=>arr.forEach(v=>allVals.push(v)));
-  let yMax = Math.max(...allVals)*1.1, yMin = 0;
+
+  // Robust axis scaling: a single outlier point (e.g. one strategy's legacy wealth at high equity)
+  // shouldn't force the whole chart to stretch and crush every other line into the bottom few
+  // pixels. Cap the axis at a high percentile of the data instead of the bare maximum, and let
+  // any points above that render pinned at the top edge (flagged to the caller via `clipped`).
+  const sorted = allVals.slice().sort((a,b)=>a-b);
+  const idx = sorted.length ? Math.min(sorted.length-1, Math.ceil(sorted.length*0.85)-1) : 0;
+  const robustCap = sorted.length ? sorted[idx] : 1;
+  const trueMax = sorted.length ? sorted[sorted.length-1] : 1;
+  let yMax = robustCap * 1.15;
+  if(yMax <= 0) yMax = Math.max(trueMax, 1) * 1.15;
+  let yMin = 0;
+  const clipped = trueMax > yMax;
 
   const xN = xVals.length;
   const xAt = i => padL + (plotW * i/(xN-1));
-  const yAt = v => padT + plotH - (plotH * (v-yMin)/(yMax-yMin));
+  const yAt = v => {
+    const vv = Math.min(v, yMax);
+    return padT + plotH - (plotH * (vv-yMin)/(yMax-yMin));
+  };
 
   ctx.strokeStyle = '#DDD4BC'; ctx.lineWidth=1; ctx.font='10.5px IBM Plex Mono, monospace'; ctx.fillStyle='#5C6A76';
   const gridSteps = 4;
@@ -797,8 +811,19 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt){
   }
   const xTickEvery = Math.max(1, Math.round(xN/8));
   for(let i=0;i<xN;i+=xTickEvery){
-    ctx.fillText(xFmt(xVals[i]), xAt(i)-12, cssH-8);
+    ctx.fillText(xFmt(xVals[i]), xAt(i)-12, cssH-26);
   }
+
+  // axis titles
+  ctx.font = '11px IBM Plex Mono, monospace'; ctx.fillStyle = '#212C37';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel || '', padL + plotW/2, cssH-8);
+  ctx.save();
+  ctx.translate(12, padT + plotH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(yLabel || '', 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'left';
 
   for(const key of Object.keys(series)){
     const arr = series[key];
@@ -823,6 +848,7 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt){
 
   ctx.strokeStyle = '#212C37'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(cssW-padR,padT+plotH); ctx.stroke();
+  return {clipped};
 }
 
 function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){
@@ -1433,8 +1459,7 @@ const CMP_X_CONFIG = {
   alloc:   {vals:[0,10,20,30,40,50,60,70,80,90,100], fmt:v=>v+'%'},
   horizon: {vals:[10,13,16,19,22,25,28,31,34,37,40], fmt:v=>v+'y'},
   prob:    {vals:[1,5,10,15,20,25,30,35,40], fmt:v=>v+'%'},
-  floorT:  {vals:[0,10,20,30,40,50,60], fmt:v=>v+'%'},
-  fee:     {vals:[0,0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0], fmt:v=>v.toFixed(2)+'%'}
+  floorT:  {vals:[0,10,20,30,40,50,60], fmt:v=>v+'%'}
 };
 const CMP_Y_LABEL = {
   rate:'Solved initial spending rate', vol:'Year-to-year spending volatility (avg % change)',
@@ -1461,6 +1486,10 @@ function computeYMetric(yVar, cfg, rate, targetProb, floorFrac){
   }
   return rate*100;
 }
+
+const CMP_X_LABEL = {
+  alloc:'Equity allocation', horizon:'Time horizon (years)', prob:'Chance of breach (downside target)', floorT:'Wealth floor (downside target)'
+};
 
 $('cmpBtn').onclick = ()=>{
   $('cmpBtn').disabled = true;
@@ -1505,7 +1534,6 @@ function runComparison(){
       let prob = targetProb, floor = floorFrac;
       if(xVar==='alloc') cfg.wEq = x/100;
       else if(xVar==='horizon') cfg.horizon = x;
-      else if(xVar==='fee') cfg.fee = x/100;
       else if(xVar==='prob') prob = x/100;
       else if(xVar==='floorT') floor = x/100;
       const rate = solveRateFast(cfg, prob, floor);
@@ -1514,11 +1542,11 @@ function runComparison(){
   }
 
   const yFmt = yVar==='wealth' ? (v=>v.toFixed(0)+'%') : (v=>v.toFixed(1)+'%');
-  drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt);
+  const {clipped} = drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt, CMP_X_LABEL[xVar], CMP_Y_LABEL[yVar]);
   $('cmpLegend').innerHTML = strategies.map(s=>{
     const note = s==='actuarial' ? ' (unvalidated, dashed)' : '';
     return `<span><i class="swatch" style="background:${STRAT_COLORS[s]}"></i>${STRAT_LABEL[s]}${note}</span>`;
-  }).join('');
+  }).join('') + (clipped ? `<span style="color:var(--rust);">&#9888; one or more points run above the visible range and are pinned at the top edge</span>` : '');
   $('cmpWrap').style.display = 'block';
 
   $('cmpBtn').disabled = false;

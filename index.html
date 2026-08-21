@@ -277,10 +277,11 @@ canvas{width:100%;display:block;}
         </div>
 
         <div class="field strat-param" data-strat="guardrails">
-          <label>Withdrawal-rate ceiling <span class="val" id="v_gCap">15% of current</span></label>
+          <label>Ceiling &mdash; cut spending if it exceeds this % of current balance <span class="val" id="v_gCap">15%</span></label>
           <input type="range" id="gCap" min="5" max="30" step="0.5" value="15">
-          <label style="margin-top:8px;">Withdrawal-rate floor <span class="val" id="v_gFloor">3% of current</span></label>
+          <label style="margin-top:8px;">Floor &mdash; raise spending if it falls below this % of current balance <span class="val" id="v_gFloor">3%</span></label>
           <input type="range" id="gFloor" min="0" max="10" step="0.5" value="3">
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">The floor must stay below the ceiling. If you get a "no solution found" warning: <b>infeasible on the downside</b> usually means the floor is set too high (try lowering it); <b>never breaches even at 30%</b> usually means the ceiling is set too low (try raising it).</div>
         </div>
 
         <div class="field strat-param" data-strat="inflrule">
@@ -403,7 +404,7 @@ const STRAT_DESC = {
   fixedpct: "The polar opposite of Constant Amount: withdraw a fixed % of the current balance every year, recalculated annually. The portfolio never fully depletes, but annual spending can be extremely volatile.",
   floorceil: "Constant-percent withdrawals, but clamped between a dollar floor and a dollar ceiling (set below). Bounded flexibility \u2014 spending responds to markets, within limits.",
   ratchet: "Kitces' Ratcheting Safe Withdrawal Rate, as described by Wade Pfau: flat inflation-adjusted spending, like Constant Amount, except spending steps up (never down) whenever the portfolio's nominal (not inflation-adjusted) value grows well past its starting value.",
-  guardrails: "Part of Guyton's Decision Rules: spend a constant inflation-adjusted amount, except when the current withdrawal rate (this year's spend \u00f7 current balance) breaches a ceiling or floor \u2014 then spending resets to that boundary rate.",
+  guardrails: "Guyton's Decision Rules (simplified): spend the same inflation-adjusted amount each year, as a share of your current balance. If that share ever climbs above your ceiling %, spending is cut back down to the ceiling. If it ever falls below your floor %, spending is raised up to the floor.",
   inflrule: "Spend a constant inflation-adjusted amount, except skip the inflation raise in any year where the nominal (non-inflation-adjusted) portfolio value has fallen below a set dollar threshold.",
   actuarial: "Spending is set as a multiple of the IRS RMD-table percentage for the retiree's current age, recalibrated each year as both age and portfolio value change. Naturally variable and never depletes to zero."
 };
@@ -628,7 +629,7 @@ function simulate(cfg, nSims, trackFull){
   return {terminal, wealthPaths, spendPaths, ratchetCounts, triggerA, triggerB};
 }
 
-function solveRate(cfg, targetProb, floorFrac){
+function effectiveBounds(cfg){
   let lo=0.003, hi=0.30;
   // Dollar Floor-and-Ceiling: once the tested rate is at or below the strategy's own spending
   // floor, spend gets pinned to that floor regardless of the exact rate -- which means every rate
@@ -639,6 +640,19 @@ function solveRate(cfg, targetProb, floorFrac){
   if(cfg.strategy==='floorceil' && cfg.fcFloorFrac > lo){
     lo = cfg.fcFloorFrac;
   }
+  // Spending Guardrails: the withdrawal-RATE ceiling/floor act on year-1 spend exactly the same
+  // way -- once the tested rate is above the ceiling or below the floor, it's immediately reset
+  // to that rail, making the rest of the path (and the original rate) irrelevant. Same fix.
+  if(cfg.strategy==='guardrails'){
+    if(cfg.gFloorFrac > lo) lo = cfg.gFloorFrac;
+    if(cfg.gCapFrac < hi) hi = cfg.gCapFrac;
+  }
+  return {lo, hi};
+}
+
+function solveRate(cfg, targetProb, floorFrac){
+  let {lo, hi} = effectiveBounds(cfg);
+  if(lo >= hi) return lo; // invalid configuration (e.g. guardrails floor >= ceiling); caller should flag this
   for(let iter=0; iter<34; iter++){
     const mid=(lo+hi)/2;
     const res = simulate({...cfg, rate:mid}, 2600, false);
@@ -652,14 +666,14 @@ function solveRate(cfg, targetProb, floorFrac){
 // fixed parameters most years for some strategies -- so a "solved rate" near the search boundary
 // can be a sign the real constraint is those fixed parameters, not the rate. Check for that directly.
 function checkFeasibility(cfg, targetProb, floorFrac){
-  // Match solveRate's own effective lower bound -- for Floor-and-Ceiling, testing below the
-  // strategy's own floor just re-tests the same pinned-at-floor outcome (see note in solveRate).
-  const minRate = (cfg.strategy==='floorceil' && cfg.fcFloorFrac > 0.003) ? cfg.fcFloorFrac : 0.003;
-  const pAtMin = percentile(simulate({...cfg, rate:minRate}, 2500, false).terminal, targetProb);
-  const pAtMax = percentile(simulate({...cfg, rate:0.30}, 2500, false).terminal, targetProb);
+  const {lo, hi} = effectiveBounds(cfg);
+  if(lo >= hi) return {infeasibleLow:false, infeasibleHigh:false, invalidConfig:true};
+  const pAtMin = percentile(simulate({...cfg, rate:lo}, 2500, false).terminal, targetProb);
+  const pAtMax = percentile(simulate({...cfg, rate:hi}, 2500, false).terminal, targetProb);
   return {
     infeasibleLow: pAtMin < floorFrac,   // breaches the target even at the lowest meaningful rate
-    infeasibleHigh: pAtMax > floorFrac   // never breaches the target even at max rate (30%)
+    infeasibleHigh: pAtMax > floorFrac,  // never breaches the target even at the highest meaningful rate
+    invalidConfig: false
   };
 }
 
@@ -870,6 +884,25 @@ $('calcBtn').onclick = ()=>{
   setTimeout(runCalc, 30);
 };
 
+function feasibilityAdvice(strategy, direction, p){
+  if(strategy==='floorceil'){
+    return direction==='low'
+      ? `<b>Most likely fix:</b> your spending floor in section B is set higher than this allocation/horizon can sustain on its own. Try the "Check safe reference rate" button under the floor slider, and lower the floor below that number.`
+      : `<b>Most likely fix:</b> your spending floor and ceiling in section B are both generous enough that this downside target is never at risk. Either that's genuinely fine, or tighten the downside target in section D (lower the probability, or raise the wealth floor) if you want a more binding answer.`;
+  }
+  if(strategy==='guardrails'){
+    return direction==='low'
+      ? `<b>Most likely fix:</b> the withdrawal-rate floor in section B is set higher than this allocation/horizon can sustain &mdash; it's forcing spending up regardless of the starting rate. Try lowering the floor.`
+      : `<b>Most likely fix:</b> the withdrawal-rate ceiling in section B is set low enough that it's capping spending well before any real risk shows up. Try raising the ceiling, or tighten the downside target in section D if the ceiling is intentional.`;
+  }
+  // constant, fixedpct, ratchet, inflrule, actuarial have no independent spend-floor/cap parameter
+  // in section B that can be blamed the way floorceil/guardrails can -- the fix has to come from
+  // the downside target itself or the market assumptions.
+  return direction==='low'
+    ? `<b>Most likely fix:</b> this strategy has no adjustable floor/cap to blame here &mdash; the downside target in section D is simply too strict for this allocation/horizon. Try a higher breach probability, a lower wealth floor, a shorter horizon, or less equity exposure.`
+    : `<b>Most likely fix:</b> the downside target in section D is looser than this scenario needs. Try a lower breach probability or a higher wealth floor if you want a more binding, informative answer.`;
+}
+
 function strategyResultNote(strategy, d){
   const fmt = v => fmtUSD(v);
   if(strategy==='constant'){
@@ -888,7 +921,7 @@ function strategyResultNote(strategy, d){
     return `Spending starts flat at ${fmt(d.dollarSpend)} (in today's dollars) and only ever moves in one direction: any time the portfolio's <b>nominal</b> (unadjusted) value grows more than ${((d.ratchetThreshold-1)*100).toFixed(0)}% above its starting nominal value, spending steps up ${(d.ratchetStep*100).toFixed(0)}% for good &mdash; no more than once every ${d.ratchetMinYears} years. It never cuts spending, but unlike Fixed Percent or Actuarial, it also isn't protected from fully depleting the portfolio in a bad sequence, since between ratchets it behaves exactly like Constant Amount. In this run, spending ratcheted up ${avgRatchets.toFixed(1)} times on average over ${d.horizon} years, and never ratcheted at all in about ${pctNever.toFixed(0)}% of scenarios &mdash; typically the same bad-market scenarios that also drive the worst outcomes for a plain Constant Amount strategy.`;
   }
   if(strategy==='guardrails'){
-    return `Spending stays flat at ${fmt(d.dollarSpend)} (in today's dollars) unless the withdrawal rate against your *current* balance breaches ${(d.gCapFrac*100).toFixed(0)}% or ${(d.gFloorFrac*100).toFixed(0)}% &mdash; then it resets to that boundary. Because those resets compound, this strategy can show a wider spending range (10th: ${fmt(d.spendFinalP10)}, 90th: ${fmt(d.spendFinalP90)}) than its "smooth until triggered" design might suggest.`;
+    return `Spending stays flat at ${fmt(d.dollarSpend)} (in today's dollars) as long as that amount is between ${(d.gFloorFrac*100).toFixed(0)}% and ${(d.gCapFrac*100).toFixed(0)}% of your current balance. If a falling balance ever pushes that share above ${(d.gCapFrac*100).toFixed(0)}%, spending is cut to match; if a rising balance pushes it below ${(d.gFloorFrac*100).toFixed(0)}%, spending is raised to match. Because those resets compound over time, this strategy can show a wider spending range (10th: ${fmt(d.spendFinalP10)}, 90th: ${fmt(d.spendFinalP90)}) than its "smooth until triggered" design might suggest.`;
   }
   if(strategy==='inflrule'){
     return `Spending rises with inflation every year, except in years right after the *nominal* (non-inflation-adjusted) portfolio value falls below ${(d.iThreshFrac*100).toFixed(0)}% of its starting nominal value &mdash; in those years the raise is skipped, which is why real spending can drift down over time (10th pct: ${fmt(d.spendFinalP10)}) even though the rule never explicitly cuts spending.`;
@@ -962,10 +995,12 @@ function runCalc(){
   const spendFinalP90 = spendBands.p90[spendBands.p90.length-1];
 
   let feasibilityWarning = '';
-  if(feasibility.infeasibleLow){
-    feasibilityWarning = `<div class="feas-warning">&#9888; No genuine solution found. Even at a near-zero rate, this strategy still breaches your downside target &mdash; the ${(solvedRate*100).toFixed(2)}% shown is just the solver's search floor, not a real answer. This usually means one of the strategy's own fixed parameters in section B (a spending floor, cap, or threshold) is, by itself, too aggressive for this allocation/horizon &mdash; try lowering it, or loosen the downside target in section D.</div>`;
+  if(feasibility.invalidConfig){
+    feasibilityWarning = `<div class="feas-warning">&#9888; Invalid setup: the withdrawal-rate floor (${(gFloorFrac*100).toFixed(1)}%) is at or above the ceiling (${(gCapFrac*100).toFixed(1)}%) in section B. The floor is meant to sit below the ceiling. Lower the floor, or raise the ceiling, so floor &lt; ceiling.</div>`;
+  } else if(feasibility.infeasibleLow){
+    feasibilityWarning = `<div class="feas-warning">&#9888; No genuine solution found. Even at the lowest rate the solver will consider, this strategy still breaches your downside target &mdash; the ${(solvedRate*100).toFixed(2)}% shown isn't a real answer.<br><br>${feasibilityAdvice(strategy, 'low', {fcFloorFrac, gFloorFrac, gCapFrac})}</div>`;
   } else if(feasibility.infeasibleHigh){
-    feasibilityWarning = `<div class="feas-warning">&#9888; The downside target is never breached, even at the solver's maximum rate (30%) &mdash; so ${(solvedRate*100).toFixed(2)}% is a search ceiling, not a real optimum. Your target in section D may be looser than this scenario needs; tighten it (lower probability or higher floor) for a meaningful answer.</div>`;
+    feasibilityWarning = `<div class="feas-warning">&#9888; The downside target is never breached, even at the solver's highest rate &mdash; so ${(solvedRate*100).toFixed(2)}% is a search ceiling, not a real optimum.<br><br>${feasibilityAdvice(strategy, 'high', {fcFloorFrac, gFloorFrac, gCapFrac})}</div>`;
   }
 
   $('hero').innerHTML = `

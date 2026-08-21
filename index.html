@@ -78,6 +78,7 @@ select{font-family:'Inter',sans-serif;font-size:13px;}
 .hero .meta b{display:block;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:500;margin-top:2px;}
 .placeholder{color:var(--ink-soft);font-size:13px;font-style:italic;}
 .feas-warning{background:rgba(162,64,47,0.1);border:1px solid var(--rust);color:var(--rust);font-size:12px;line-height:1.5;padding:9px 11px;margin-bottom:10px;border-radius:2px;}
+.feas-info{background:rgba(62,110,99,0.08);border:1px solid var(--teal);color:var(--teal);font-size:12px;line-height:1.5;padding:9px 11px;margin-bottom:10px;border-radius:2px;}
 
 .chart-card{border:1px solid var(--rule);background:#fff;padding:18px 20px 8px;margin-bottom:20px;}
 .chart-card h3{font-family:'Spectral',serif;font-size:16px;margin:0 0 2px;font-weight:600;}
@@ -666,12 +667,21 @@ function effectiveBounds(cfg){
   // in that range produces statistically identical outcomes on the downside percentile we're
   // solving against. The same is true in reverse above the ceiling: spend gets pinned there too.
   // Searching either flat region wastes iterations on pure sampling noise and makes the bisection
-  // wander (verified: below the floor, solved rate varied by >2 percentage points across identical
-  // runs; above the ceiling, a loose downside target let the solver run away toward 30% before this
-  // fix). Bounding the search to [floor, ceiling] removes both flat, uninformative regions.
+  // wander. Bounding the search to [floor, ceiling] removes both flat, uninformative regions.
+  //
+  // Special case: if floor >= ceiling, the clamp min(cap, max(floor, raw)) always evaluates to cap,
+  // for every possible raw value -- there is no "rate" left to solve for at all (verified directly:
+  // as the floor-ceiling gap shrinks to zero, spend becomes a fixed constant regardless of rate,
+  // identical in effect to Constant Amount at that dollar level). Collapse the search to that single
+  // known point rather than asking a noisy Monte Carlo bisection to "discover" a signal that isn't
+  // there -- that's what was causing residual instability in very narrow floor/ceiling bands.
   if(cfg.strategy==='floorceil'){
-    if(cfg.fcFloorFrac > lo) lo = cfg.fcFloorFrac;
-    if(cfg.fcCapFrac < hi) hi = cfg.fcCapFrac;
+    if(cfg.fcFloorFrac >= cfg.fcCapFrac){
+      lo = hi = cfg.fcCapFrac;
+    } else {
+      if(cfg.fcFloorFrac > lo) lo = cfg.fcFloorFrac;
+      if(cfg.fcCapFrac < hi) hi = cfg.fcCapFrac;
+    }
   }
   // Spending Guardrails: the withdrawal-RATE ceiling/floor act on year-1 spend exactly the same
   // way -- once the tested rate is above the ceiling or below the floor, it's immediately reset
@@ -735,14 +745,27 @@ function solveRateFast(cfg, targetProb, floorFrac){
 // can be a sign the real constraint is those fixed parameters, not the rate. Check for that directly.
 function checkFeasibility(cfg, targetProb, floorFrac){
   const {lo, hi} = effectiveBounds(cfg);
-  if(lo >= hi) return {infeasibleLow:false, infeasibleHigh:false, invalidConfig:true};
+  if(lo >= hi){
+    if(cfg.strategy!=='floorceil'){
+      // Guardrails: floor >= ceiling is a genuine contradiction (both rails can't apply to a
+      // single valid range), not a well-defined degenerate case. Flag as invalid.
+      return {infeasibleLow:false, infeasibleHigh:false, invalidConfig:true, degenerate:false};
+    }
+    // Floor-and-Ceiling: floor >= ceiling isn't invalid, it's a deterministic case with no rate
+    // to solve for at all -- spend is pinned at the ceiling every year, identical to Constant
+    // Amount at that level. Evaluate feasibility directly at that single known point.
+    const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 2500));
+    const p = percentile(simulate({...cfg, rate:lo}, nSims, false).terminal, targetProb);
+    return {infeasibleLow: p < floorFrac, infeasibleHigh: p > floorFrac, invalidConfig:false, degenerate:true};
+  }
   const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 2500));
   const pAtMin = percentile(simulate({...cfg, rate:lo}, nSims, false).terminal, targetProb);
   const pAtMax = percentile(simulate({...cfg, rate:hi}, nSims, false).terminal, targetProb);
   return {
     infeasibleLow: pAtMin < floorFrac,   // breaches the target even at the lowest meaningful rate
     infeasibleHigh: pAtMax > floorFrac,  // never breaches the target even at the highest meaningful rate
-    invalidConfig: false
+    invalidConfig: false,
+    degenerate: false
   };
 }
 
@@ -1178,10 +1201,17 @@ function runCalc(){
   let feasibilityWarning = '';
   if(feasibility.invalidConfig){
     feasibilityWarning = `<div class="feas-warning">&#9888; Invalid setup: the withdrawal-rate floor (${(gFloorFrac*100).toFixed(1)}%) is at or above the ceiling (${(gCapFrac*100).toFixed(1)}%) in section B. The floor is meant to sit below the ceiling. Lower the floor, or raise the ceiling, so floor &lt; ceiling.</div>`;
+  } else if(feasibility.degenerate){
+    const pinnedPct = (fcCapFrac*100).toFixed(2);
+    const verdict = feasibility.infeasibleLow ? 'breaches your downside target' : 'satisfies your downside target';
+    feasibilityWarning = `<div class="feas-info">&#8505; Your spending floor is at or above your ceiling, so there's no rate left to solve for &mdash; spending is pinned at exactly ${fmtUSD(fcCapFrac*portfolio0)} (${pinnedPct}%) every year, identical to Constant Amount at that level. That fixed amount ${verdict}.</div>`;
   } else if(feasibility.infeasibleLow){
     feasibilityWarning = `<div class="feas-warning">&#9888; No genuine solution found. Even at the lowest rate the solver will consider, this strategy still breaches your downside target &mdash; the ${(solvedRate*100).toFixed(2)}% shown isn't a real answer.<br><br>${feasibilityAdvice(strategy, 'low', {fcFloorFrac, gFloorFrac, gCapFrac})}</div>`;
   } else if(feasibility.infeasibleHigh){
     feasibilityWarning = `<div class="feas-warning">&#9888; The downside target is never breached, even at the solver's highest rate &mdash; so ${(solvedRate*100).toFixed(2)}% is a search ceiling, not a real optimum.<br><br>${feasibilityAdvice(strategy, 'high', {fcFloorFrac, gFloorFrac, gCapFrac})}</div>`;
+  } else if(strategy==='floorceil' && (fcCapFrac-fcFloorFrac) > 0 && (fcCapFrac-fcFloorFrac) < 0.01){
+    const mid = (((fcFloorFrac+fcCapFrac)/2)*100).toFixed(1);
+    feasibilityWarning = `<div class="feas-info">&#8505; Your floor and ceiling are only ${((fcCapFrac-fcFloorFrac)*100).toFixed(1)} points apart, so this strategy behaves nearly like Constant Amount at around ${mid}%. Solved-rate precision naturally narrows along with that gap &mdash; small run-to-run variation here is expected, not an error. Widen the gap for more headroom, or use Constant Amount directly for a cleaner, more precise comparison.</div>`;
   }
 
   $('hero').innerHTML = `

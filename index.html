@@ -351,7 +351,7 @@ canvas{width:100%;display:block;}
       <div class="chart-card">
         <h3>Portfolio wealth over time</h3>
         <div class="cdesc">Real (inflation-adjusted) wealth as a % of starting portfolio, across simulated outcomes. Uses a log scale, since good markets can compound wealth far higher than bad markets can shrink it &mdash; on a normal scale the upside would crush the downside into an unreadable sliver.</div>
-        <canvas id="wealthChart" height="260"></canvas>
+        <canvas id="wealthChart" height="260" data-cssh="260"></canvas>
         <div class="legend">
           <span><i class="swatch" style="background:#c9dcd6"></i>10th&ndash;90th percentile</span>
           <span><i class="swatch" style="background:#8fb6ac"></i>25th&ndash;75th percentile</span>
@@ -363,7 +363,7 @@ canvas{width:100%;display:block;}
       <div class="chart-card">
         <h3>Annual spending over time</h3>
         <div class="cdesc">Real annual withdrawal in today's dollars, across simulated outcomes.</div>
-        <canvas id="spendChart" height="260"></canvas>
+        <canvas id="spendChart" height="260" data-cssh="260"></canvas>
         <div class="legend">
           <span><i class="swatch" style="background:#e8d9b8"></i>10th&ndash;90th percentile</span>
           <span><i class="swatch" style="background:#c9a24e"></i>25th&ndash;75th percentile</span>
@@ -374,7 +374,7 @@ canvas{width:100%;display:block;}
       <div class="chart-card" id="triggerCard" style="display:none;">
         <h3 id="triggerTitle">Rule trigger frequency</h3>
         <div class="cdesc" id="triggerDesc">Of all simulated scenarios, the % where this strategy's rule actually activated in a given year.</div>
-        <canvas id="triggerChart" height="200"></canvas>
+        <canvas id="triggerChart" height="200" data-cssh="200"></canvas>
         <div class="legend" id="triggerLegend"></div>
       </div>
 
@@ -414,7 +414,7 @@ canvas{width:100%;display:block;}
     </div>
     <button class="finder-btn" id="cmpBtn" style="margin-top:6px;max-width:260px;">Generate comparison</button>
     <div id="cmpWrap" style="display:none;margin-top:14px;">
-      <canvas id="cmpChart" height="340"></canvas>
+      <canvas id="cmpChart" height="340" data-cssh="340"></canvas>
       <div class="legend" id="cmpLegend"></div>
     </div>
   </div>
@@ -817,8 +817,9 @@ const STRAT_COLORS = {
 function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
-  const cssH = parseInt(canvas.getAttribute('height')) || 260;
+  const cssH = parseInt(canvas.dataset.cssh || canvas.getAttribute('height')) || 260;
   canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  canvas.style.width = cssW+"px"; canvas.style.height = cssH+"px";
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,cssW,cssH);
@@ -888,8 +889,9 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
 function drawTriggerBars(canvas, years, seriesA, colorA, seriesB, colorB){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
-  const cssH = parseInt(canvas.getAttribute('height')) || 200;
+  const cssH = parseInt(canvas.dataset.cssh || canvas.getAttribute('height')) || 200;
   canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  canvas.style.width = cssW+"px"; canvas.style.height = cssH+"px";
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,cssW,cssH);
@@ -945,8 +947,9 @@ function niceLogTicks(min, max){
 function drawFan(canvas, years, bands, opts){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
-  const cssH = parseInt(canvas.getAttribute('height')) || 260;
+  const cssH = parseInt(canvas.dataset.cssh || canvas.getAttribute('height')) || 260;
   canvas.width = cssW*dpr; canvas.height = cssH*dpr;
+  canvas.style.width = cssW+"px"; canvas.style.height = cssH+"px";
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,cssW,cssH);

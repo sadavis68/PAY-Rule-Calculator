@@ -420,6 +420,24 @@ canvas{width:100%;display:block;}
       <div class="finder-sub" style="margin-top:20px;">All 4 categories at your current settings</div>
       <div class="cdesc" style="margin-bottom:8px;">Every strategy, side by side, across all four measures at once &mdash; not swept across the X-axis variable, just where your dashboard is set right now. Best value in each column is highlighted. Uses sections A, B, C, and D as currently set for <b>every</b> strategy (not just the one selected above) &mdash; not the starting portfolio dollar amount, which doesn't affect any of these percentages.</div>
       <table class="rank-table" id="cmpTable"></table>
+
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brass);text-transform:uppercase;letter-spacing:.8px;">Which sliders move which columns, and which direction?</summary>
+        <div class="footer-note" style="margin-top:8px;padding-top:0;border-top:none;">
+          <b>General (section A/C/D) &mdash; move every row:</b><br>
+          Equity allocation &uarr;: rate rises then falls (peaks ~50-70%), wealth &uarr;, depletion rises then plateaus.<br>
+          Time horizon &uarr;: rate &darr;, wealth &uarr;, depletion &uarr;.<br>
+          Annual fee &uarr;: rate &darr;, wealth &darr;.<br>
+          Chance of breach &uarr; (looser target): rate &uarr;, volatility &uarr;, wealth &darr;, depletion &uarr;.<br>
+          Wealth floor target &uarr; (stricter target): rate &darr;, volatility &darr;, wealth &uarr;, depletion &darr;.<br><br>
+          <b>Strategy-specific (section B) &mdash; move only that strategy's row:</b><br>
+          <u>Floor-and-Ceiling</u> &mdash; floor &uarr;: rate &darr;, wealth &uarr; <i>and</i> depletion &uarr; together (better typical legacy, worse ruin risk). Ceiling &uarr;: rate &uarr;, volatility &uarr;, wealth &darr;.<br>
+          <u>Ratcheting</u> &mdash; trigger &uarr; (harder to hit): volatility &darr;, wealth &uarr;. Step size &uarr;: rate &darr;, volatility &uarr;, wealth &darr;. Min years &uarr;: rate &uarr;, volatility &darr;, wealth &uarr;.<br>
+          <u>Guardrails</u> &mdash; ceiling &uarr;: rate &darr;, wealth &uarr;. Floor &uarr;: the most dangerous input in the tool &mdash; pushed high, volatility and depletion chance explode while wealth craters (an 8% floor produced ~74% depletion chance in testing).<br>
+          <u>Inflation Rule</u> &mdash; freeze threshold &uarr; (freezes trigger more easily): rate &uarr;, volatility &uarr;, wealth &darr;.<br>
+          <u>Actuarial</u> &mdash; starting age: no meaningful effect observed, consistent with its calibration already being flagged as unvalidated.
+        </div>
+      </details>
     </div>
   </div>
 </div>

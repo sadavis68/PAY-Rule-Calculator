@@ -731,13 +731,17 @@ function solveRate(cfg, targetProb, floorFrac){
   return (lo+hi)/2;
 }
 
-// Lower-precision, faster solve used only for the multi-point Strategy Comparison sweep, where
-// dozens of solves are needed per render and relative ordering matters more than exact precision.
+// Multi-point Strategy Comparison sweep -- needs dozens of solves per render, so this used to use
+// a much lighter sim count for speed. That traded away too much precision: at points where a
+// strategy is genuinely solving (not pinned at a floor/ceiling), run-to-run jitter of up to ~0.5
+// percentage points showed up as visibly different curves between one "Generate comparison" click
+// and the next. Matching the main solver's precision cuts that roughly in half, at the cost of a
+// few extra seconds per click (still fast enough for an on-demand button with a loading state).
 function solveRateFast(cfg, targetProb, floorFrac){
   let {lo, hi} = effectiveBounds(cfg);
   if(lo >= hi) return lo;
-  const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 700));
-  for(let iter=0; iter<20; iter++){
+  const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 2600));
+  for(let iter=0; iter<24; iter++){
     const mid=(lo+hi)/2;
     const res = simulate({...cfg, rate:mid}, nSims, false);
     const p = percentile(res.terminal, targetProb);

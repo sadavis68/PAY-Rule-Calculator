@@ -227,6 +227,7 @@ canvas{width:100%;display:block;}
         <div class="field">
           <label>Equity allocation <span class="val" id="v_alloc">60% / 40%</span></label>
           <input type="range" id="alloc" min="0" max="100" step="5" value="60">
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">Not a straight line: sustainable spending typically peaks somewhere around 50-70% equity. Too little limits growth as much as too much amplifies risk &mdash; use the comparison chart below (X = equity allocation) to see where it peaks for your specific inputs.</div>
         </div>
         <div class="field">
           <label>Time horizon <span class="val" id="v_horizon">30 years</span></label>
@@ -266,6 +267,7 @@ canvas{width:100%;display:block;}
           <input type="range" id="fcCap" min="1" max="15" step="0.1" value="5.0">
           <button type="button" class="ref-rate-btn" data-for="fc">Check safe reference rate for this allocation</button>
           <div class="ref-rate-out" id="refOut_fc"></div>
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">Raising the floor protects spending in bad markets, but forces more withdrawals from an already-struggling portfolio &mdash; it trades a better typical outcome for a worse worst-case one, not a free safety net.</div>
         </div>
 
         <div class="field strat-param" data-strat="ratchet">
@@ -283,7 +285,7 @@ canvas{width:100%;display:block;}
           <input type="range" id="gCap" min="5" max="30" step="0.5" value="15">
           <label style="margin-top:8px;">Floor &mdash; raise spending if it falls below this % of current balance <span class="val" id="v_gFloor">3%</span></label>
           <input type="range" id="gFloor" min="0" max="10" step="0.5" value="3">
-          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">The floor must stay below the ceiling. If you get a "no solution found" warning: <b>infeasible on the downside</b> usually means the floor is set too high (try lowering it); <b>never breaches even at 30%</b> usually means the ceiling is set too low (try raising it).</div>
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;">The floor must stay below the ceiling. <b style="color:var(--rust);">Be careful raising the floor</b> &mdash; unlike the ceiling, pushing it too high doesn't just fail to solve, it can quietly wreck the plan (an 8% floor produced a ~74% depletion chance in testing). If you get a "no solution found" warning: infeasible on the downside usually means the floor is too high (lower it); never breaches even at 30% usually means the ceiling is too low (raise it).</div>
         </div>
 
         <div class="field strat-param" data-strat="inflrule">
@@ -420,24 +422,6 @@ canvas{width:100%;display:block;}
       <div class="finder-sub" style="margin-top:20px;">All 4 categories at your current settings</div>
       <div class="cdesc" style="margin-bottom:8px;">Every strategy, side by side, across all four measures at once &mdash; not swept across the X-axis variable, just where your dashboard is set right now. Best value in each column is highlighted. Uses sections A, B, C, and D as currently set for <b>every</b> strategy (not just the one selected above) &mdash; not the starting portfolio dollar amount, which doesn't affect any of these percentages.</div>
       <table class="rank-table" id="cmpTable"></table>
-
-      <details style="margin-top:16px;">
-        <summary style="cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brass);text-transform:uppercase;letter-spacing:.8px;">Which sliders move which columns, and which direction?</summary>
-        <div class="footer-note" style="margin-top:8px;padding-top:0;border-top:none;">
-          <b>General (section A/C/D) &mdash; move every row:</b><br>
-          Equity allocation &uarr;: rate rises then falls (peaks ~50-70%), wealth &uarr;, depletion rises then plateaus.<br>
-          Time horizon &uarr;: rate &darr;, wealth &uarr;, depletion &uarr;.<br>
-          Annual fee &uarr;: rate &darr;, wealth &darr;.<br>
-          Chance of breach &uarr; (looser target): rate &uarr;, volatility &uarr;, wealth &darr;, depletion &uarr;.<br>
-          Wealth floor target &uarr; (stricter target): rate &darr;, volatility &darr;, wealth &uarr;, depletion &darr;.<br><br>
-          <b>Strategy-specific (section B) &mdash; move only that strategy's row:</b><br>
-          <u>Floor-and-Ceiling</u> &mdash; floor &uarr;: rate &darr;, wealth &uarr; <i>and</i> depletion &uarr; together (better typical legacy, worse ruin risk). Ceiling &uarr;: rate &uarr;, volatility &uarr;, wealth &darr;.<br>
-          <u>Ratcheting</u> &mdash; trigger &uarr; (harder to hit): volatility &darr;, wealth &uarr;. Step size &uarr;: rate &darr;, volatility &uarr;, wealth &darr;. Min years &uarr;: rate &uarr;, volatility &darr;, wealth &uarr;.<br>
-          <u>Guardrails</u> &mdash; ceiling &uarr;: rate &darr;, wealth &uarr;. Floor &uarr;: the most dangerous input in the tool &mdash; pushed high, volatility and depletion chance explode while wealth craters (an 8% floor produced ~74% depletion chance in testing).<br>
-          <u>Inflation Rule</u> &mdash; freeze threshold &uarr; (freezes trigger more easily): rate &uarr;, volatility &uarr;, wealth &darr;.<br>
-          <u>Actuarial</u> &mdash; starting age: no meaningful effect observed, consistent with its calibration already being flagged as unvalidated.
-        </div>
-      </details>
     </div>
   </div>
 </div>
@@ -1533,158 +1517,4 @@ const CMP_Y_LABEL = {
   wealth:'Median ending wealth (% of initial)', depletion:'Chance of full depletion'
 };
 
-function computeYMetric(yVar, cfg, rate, targetProb, floorFrac){
-  if(yVar==='rate') return rate*100;
-  const sim = simulate({...cfg, rate}, 2000, true);
-  if(yVar==='wealth'){
-    return percentile(sim.wealthPaths.map(p=>p[p.length-1]), 0.5)*100;
-  }
-  if(yVar==='depletion'){
-    return sim.terminal.filter(v=>v<0.005).length/sim.terminal.length*100;
-  }
-  if(yVar==='vol'){
-    let total=0, count=0;
-    for(const path of sim.spendPaths){
-      for(let yr=1; yr<path.length; yr++){
-        if(path[yr-1]>0){ total += Math.abs(path[yr]-path[yr-1])/path[yr-1]; count++; }
-      }
-    }
-    return count ? (total/count*100) : 0;
-  }
-  return rate*100;
-}
-
-const CMP_X_LABEL = {
-  alloc:'Equity allocation', horizon:'Time horizon (years)', prob:'Chance of breach (downside target)', floorT:'Wealth floor (downside target)'
-};
-
-$('cmpBtn').onclick = ()=>{
-  $('cmpBtn').disabled = true;
-  $('cmpBtn').textContent = 'Computing\u2026';
-  setTimeout(runComparison, 30);
-};
-
-function runComparison(){
-  const horizon = parseInt($('horizon').value);
-  const fee = parseFloat($('fee').value)/100;
-  const targetProb = parseFloat($('prob').value)/100;
-  const floorFrac = parseFloat($('floor').value)/100;
-  const simpleParams = {
-    sMean: parseFloat($('s_mean').value)/100, sStd: parseFloat($('s_std').value)/100,
-    bMean: parseFloat($('b_mean').value)/100, bStd: parseFloat($('b_std').value)/100,
-    corr: parseFloat($('corr').value), iMean: parseFloat($('i_mean').value)/100, iStd: parseFloat($('i_std').value)/100
-  };
-  const fcFloorFrac = parseFloat($('fcFloor').value)/100;
-  const fcCapFrac = parseFloat($('fcCap').value)/100;
-  const gCapFrac = parseFloat($('gCap').value)/100;
-  const gFloorFrac = parseFloat($('gFloor').value)/100;
-  const iThreshFrac = parseFloat($('iThresh').value)/100;
-  const actAge = parseFloat($('actAge').value);
-  const ratchetThreshold = 1 + parseFloat($('ratchetThresh').value)/100;
-  const ratchetStep = parseFloat($('ratchetStep').value)/100;
-  const ratchetMinYears = parseFloat($('ratchetYears').value);
-  const wEqCurrent = parseFloat($('alloc').value)/100;
-
-  const baseCfg = {mode, simpleParams, fee, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
-                   ratchetThreshold, ratchetStep, ratchetMinYears, wEq:wEqCurrent};
-
-  const xVar = $('cmpXVar').value;
-  const yVar = $('cmpYVar').value;
-  const xConf = CMP_X_CONFIG[xVar];
-  const xVals = xConf.vals;
-
-  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial'];
-  const series = {};
-  for(const strat of strategies){
-    series[strat] = xVals.map(x=>{
-      let cfg = {...baseCfg, strategy:strat};
-      let prob = targetProb, floor = floorFrac;
-      if(xVar==='alloc') cfg.wEq = x/100;
-      else if(xVar==='horizon') cfg.horizon = x;
-      else if(xVar==='prob') prob = x/100;
-      else if(xVar==='floorT') floor = x/100;
-      const rate = solveRateFast(cfg, prob, floor);
-      return computeYMetric(yVar, cfg, rate, prob, floor);
-    });
-  }
-
-  const yFmt = yVar==='wealth' ? (v=>v.toFixed(0)+'%') : (v=>v.toFixed(1)+'%');
-  const {clipped} = drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt, CMP_X_LABEL[xVar], CMP_Y_LABEL[yVar]);
-  $('cmpLegend').innerHTML = strategies.map(s=>{
-    const note = s==='actuarial' ? ' (unvalidated, dashed)' : '';
-    return `<span><i class="swatch" style="background:${STRAT_COLORS[s]}"></i>${STRAT_LABEL[s]}${note}</span>`;
-  }).join('') + (clipped ? `<span style="color:var(--rust);">&#9888; one or more points run above the visible range and are pinned at the top edge</span>` : '');
-  $('cmpWrap').style.display = 'block';
-
-  // Snapshot table: all 4 categories at once, at current (non-swept) settings -- complements the
-  // sweep chart above, which only shows one metric across a range of one variable.
-  const METRIC_KEYS = ['rate','vol','wealth','depletion'];
-  const METRIC_COL_LABEL = {rate:'Initial Rate', vol:'Yr-to-Yr Volatility', wealth:'Median Wealth', depletion:'Depletion Chance'};
-  const METRIC_BETTER = {rate:'high', vol:'low', wealth:'high', depletion:'low'};
-  const snapshot = {};
-  for(const strat of strategies){
-    const cfg = {...baseCfg, strategy:strat};
-    const rate = solveRate(cfg, targetProb, floorFrac);
-    const row = {};
-    for(const m of METRIC_KEYS) row[m] = computeYMetric(m, cfg, rate, targetProb, floorFrac);
-    snapshot[strat] = row;
-  }
-  const bestPerMetric = {};
-  for(const m of METRIC_KEYS){
-    let best = strategies[0];
-    for(const s of strategies){
-      const better = METRIC_BETTER[m]==='high' ? snapshot[s][m] > snapshot[best][m] : snapshot[s][m] < snapshot[best][m];
-      if(better) best = s;
-    }
-    bestPerMetric[m] = best;
-  }
-  const headerRow = `<tr><th>Strategy</th>${METRIC_KEYS.map(m=>`<th>${METRIC_COL_LABEL[m]}</th>`).join('')}</tr>`;
-  const bodyRows = strategies.map(s=>{
-    const cells = METRIC_KEYS.map(m=>{
-      const v = snapshot[s][m];
-      const disp = m==='wealth' ? v.toFixed(0)+'%' : v.toFixed(1)+'%';
-      const cls = bestPerMetric[m]===s ? ' class="best"' : '';
-      return `<td${cls}>${disp}</td>`;
-    }).join('');
-    const note = s==='actuarial' ? ' <span style="color:var(--ink-soft);font-size:10px;">(unvalidated)</span>' : '';
-    return `<tr><td>${STRAT_LABEL[s]}${note}</td>${cells}</tr>`;
-  }).join('');
-  $('cmpTable').innerHTML = `<thead>${headerRow}</thead><tbody>${bodyRows}</tbody>`;
-
-  $('cmpBtn').disabled = false;
-  $('cmpBtn').textContent = 'Generate comparison';
-}
-
-// ---------- Reference rate helper (for floor/ceiling-based strategies) ----------
-document.querySelectorAll('.ref-rate-btn').forEach(btn=>{
-  btn.onclick = ()=>{
-    const which = btn.dataset.for;
-    const outEl = $('refOut_'+which);
-    outEl.textContent = 'Calculating\u2026';
-    outEl.classList.remove('ready');
-    setTimeout(()=>{
-      const wEq = parseFloat($('alloc').value)/100;
-      const horizon = parseInt($('horizon').value);
-      const fee = parseFloat($('fee').value)/100;
-      const targetProb = parseFloat($('prob').value)/100;
-      const floorFrac = parseFloat($('floor').value)/100;
-      const simpleParams = {
-        sMean: parseFloat($('s_mean').value)/100, sStd: parseFloat($('s_std').value)/100,
-        bMean: parseFloat($('b_mean').value)/100, bStd: parseFloat($('b_std').value)/100,
-        corr: parseFloat($('corr').value), iMean: parseFloat($('i_mean').value)/100, iStd: parseFloat($('i_std').value)/100
-      };
-      const cfg = {wEq, horizon, fee, mode, simpleParams, strategy:'constant',
-                   fcFloorFrac:0, fcCapFrac:1, gCapFrac:1, gFloorFrac:0, iThreshFrac:1, actAge:72};
-      const refRate = solveRate(cfg, targetProb, floorFrac);
-      const currentFloorPct = parseFloat($('fcFloor').value);
-      const refPct = refRate*100;
-      const safe = currentFloorPct < refPct;
-      outEl.classList.add('ready');
-      outEl.innerHTML = `A flat Constant Amount strategy sustains <b>${refPct.toFixed(2)}%</b> under your current allocation/horizon/target. Your floor is set to <b>${currentFloorPct.toFixed(1)}%</b> &mdash; ${safe ? 'that\u2019s comfortably below it, good.' : '<span style="color:var(--rust);">that\u2019s at or above it, which is likely to break the solver.</span> Try dropping the floor to somewhere under '+refPct.toFixed(1)+'%.'}`;
-    }, 30);
-  };
-});
-
-</script>
-</body>
-</html>
+function computeYMetric(yVar, cfg, rate, ta

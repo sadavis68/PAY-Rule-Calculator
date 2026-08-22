@@ -125,6 +125,7 @@ canvas{width:100%;display:block;}
 .rank-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px;}
 .rank-table th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);border-bottom:1px solid var(--ink);padding:4px 6px;}
 .rank-table td{padding:5px 6px;border-bottom:1px solid var(--paper-dark);}
+.rank-table td.best{background:rgba(156,122,46,0.14);font-weight:600;color:var(--brass);}
 .rank-table tr:first-child td{font-weight:600;}
 .bar-wrap{background:#EDE6D3;height:6px;width:80px;border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;}
 .bar-fill{height:100%;background:var(--teal);}
@@ -416,6 +417,9 @@ canvas{width:100%;display:block;}
     <div id="cmpWrap" style="display:none;margin-top:14px;">
       <canvas id="cmpChart" height="340" data-cssh="340"></canvas>
       <div class="legend" id="cmpLegend"></div>
+      <div class="finder-sub" style="margin-top:20px;">All 4 categories at your current settings</div>
+      <div class="cdesc" style="margin-bottom:8px;">Every strategy, side by side, across all four measures at once &mdash; not swept across the X-axis variable, just where your dashboard is set right now. Best value in each column is highlighted.</div>
+      <table class="rank-table" id="cmpTable"></table>
     </div>
   </div>
 </div>
@@ -1491,6 +1495,7 @@ function resetAll(){
   });
   $('triggerCard').style.display = 'none';
   $('cmpWrap').style.display = 'none';
+  $('cmpTable').innerHTML = '';
   $('cmpXVar').value = 'alloc';
   $('cmpYVar').value = 'rate';
 
@@ -1592,6 +1597,41 @@ function runComparison(){
     return `<span><i class="swatch" style="background:${STRAT_COLORS[s]}"></i>${STRAT_LABEL[s]}${note}</span>`;
   }).join('') + (clipped ? `<span style="color:var(--rust);">&#9888; one or more points run above the visible range and are pinned at the top edge</span>` : '');
   $('cmpWrap').style.display = 'block';
+
+  // Snapshot table: all 4 categories at once, at current (non-swept) settings -- complements the
+  // sweep chart above, which only shows one metric across a range of one variable.
+  const METRIC_KEYS = ['rate','vol','wealth','depletion'];
+  const METRIC_COL_LABEL = {rate:'Initial Rate', vol:'Yr-to-Yr Volatility', wealth:'Median Wealth', depletion:'Depletion Chance'};
+  const METRIC_BETTER = {rate:'high', vol:'low', wealth:'high', depletion:'low'};
+  const snapshot = {};
+  for(const strat of strategies){
+    const cfg = {...baseCfg, strategy:strat};
+    const rate = solveRate(cfg, targetProb, floorFrac);
+    const row = {};
+    for(const m of METRIC_KEYS) row[m] = computeYMetric(m, cfg, rate, targetProb, floorFrac);
+    snapshot[strat] = row;
+  }
+  const bestPerMetric = {};
+  for(const m of METRIC_KEYS){
+    let best = strategies[0];
+    for(const s of strategies){
+      const better = METRIC_BETTER[m]==='high' ? snapshot[s][m] > snapshot[best][m] : snapshot[s][m] < snapshot[best][m];
+      if(better) best = s;
+    }
+    bestPerMetric[m] = best;
+  }
+  const headerRow = `<tr><th>Strategy</th>${METRIC_KEYS.map(m=>`<th>${METRIC_COL_LABEL[m]}</th>`).join('')}</tr>`;
+  const bodyRows = strategies.map(s=>{
+    const cells = METRIC_KEYS.map(m=>{
+      const v = snapshot[s][m];
+      const disp = m==='wealth' ? v.toFixed(0)+'%' : v.toFixed(1)+'%';
+      const cls = bestPerMetric[m]===s ? ' class="best"' : '';
+      return `<td${cls}>${disp}</td>`;
+    }).join('');
+    const note = s==='actuarial' ? ' <span style="color:var(--ink-soft);font-size:10px;">(unvalidated)</span>' : '';
+    return `<tr><td>${STRAT_LABEL[s]}${note}</td>${cells}</tr>`;
+  }).join('');
+  $('cmpTable').innerHTML = `<thead>${headerRow}</thead><tbody>${bodyRows}</tbody>`;
 
   $('cmpBtn').disabled = false;
   $('cmpBtn').textContent = 'Generate comparison';

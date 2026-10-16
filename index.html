@@ -181,6 +181,7 @@ canvas{width:100%;display:block;}
         <label class="check-row"><input type="checkbox" data-qual="neverDepletes"> Assurance the portfolio will (almost) never be fully drawn to zero, however bad markets get</label>
         <label class="check-row"><input type="checkbox" data-qual="ageBased"> Withdrawals tied to an official age-based formula (the IRS RMD methodology), not just market performance</label>
         <label class="check-row"><input type="checkbox" data-qual="inflationProtect"> A rule that explicitly reacts to high-inflation periods, not just market downturns</label>
+        <label class="check-row"><input type="checkbox" data-qual="tieredLifestyle"> A simple yearly check &mdash; compare the balance at the end of the year to the start, and trim spending after a bad year / restore it after a good one</label>
         <label class="check-row"><input type="checkbox" data-qual="uncappedUpside"> Spending that only ever increases &mdash; never a cut, even if that means a bad sequence could still deplete the portfolio</label>
       </div>
     </div>
@@ -247,6 +248,7 @@ canvas{width:100%;display:block;}
               <option value="constant">1. Constant Amount (Bengen)</option>
               <option value="guardrails">5. Spending Guardrails</option>
               <option value="inflrule">6. Inflation Rule</option>
+              <option value="annualcheck">8. Annual Check (BOY vs EOY)</option>
             </optgroup>
             <optgroup label="Constant Percent">
               <option value="fixedpct">2. Constant Percent</option>
@@ -291,6 +293,20 @@ canvas{width:100%;display:block;}
         <div class="field strat-param" data-strat="inflrule">
           <label>Skip inflation raise if nominal portfolio falls below <span class="val" id="v_iThresh">100% of initial</span></label>
           <input type="range" id="iThresh" min="20" max="120" step="5" value="100">
+        </div>
+
+        <div class="field strat-param" data-strat="annualcheck">
+          <label>Spending trim after a bad year <span class="val" id="v_acCut">20%</span></label>
+          <input type="range" id="acCut" min="5" max="40" step="5" value="20">
+          <label style="margin-top:8px;">&quot;Good year&quot; trigger &mdash; restore full spending if your balance grew at least this much <span class="val" id="v_acUp">+5%</span></label>
+          <input type="range" id="acUp" min="0" max="20" step="1" value="5">
+          <label style="margin-top:8px;">&quot;Bad year&quot; trigger &mdash; trim spending if your balance fell more than this <span class="val" id="v_acDown">-10%</span></label>
+          <input type="range" id="acDown" min="0" max="30" step="1" value="10">
+          <label style="margin-top:8px;">Optional extra trim if the balance is still below its starting value <span class="val" id="v_acCut2">Off</span></label>
+          <input type="range" id="acCut2" min="0" max="20" step="5" value="0">
+          <label style="margin-top:8px;">&hellip;checked after this many years <span class="val" id="v_acYears">5 years</span></label>
+          <input type="range" id="acYears" min="2" max="15" step="1" value="5">
+          <div class="footer-note" style="margin:6px 0 0;padding:0;border:none;"><b>How this works.</b> Spending starts flat and inflation-adjusted. Each year-end, compare your balance to where it stood at the start of the year (BOY vs EOY). Withdrawals count: it is the actual change in your balance <i>after</i> you took your spending out, in nominal (unadjusted) dollars.<br>&bull; <b>Bad year</b> (balance fell more than the bad-year trigger): next year's spending is trimmed by the trim %.<br>&bull; <b>Good year</b> (balance grew at least the good-year trigger): spending goes back to its full level.<br>&bull; <b>In between:</b> no change &mdash; spending stays as it was.<br>&bull; <b>Trim %:</b> bigger = more protection in bad years, and a higher safe starting rate, but a bigger lifestyle hit when it happens.<br>&bull; <b>Triggers:</b> a smaller bad-year number trims sooner; a lower good-year number restores sooner (more risk).<br>&bull; <b>Optional extra trim</b> (off at 0%): for long, slow downturns the one-year test can miss. If, after the chosen number of years, your balance (in nominal dollars) is still below where it started, spending is trimmed by this extra amount on top of any bad-year trim. It lifts automatically once the balance is back above its starting value. Bigger extra trim or fewer years = more protection and a higher safe starting rate, but more years of reduced spending.<br>&bull; The solved rate is the <b>full</b> starting rate, the one in effect before any trim.</div>
         </div>
 
         <div class="field strat-param" data-strat="actuarial">
@@ -394,7 +410,7 @@ canvas{width:100%;display:block;}
 
   <div class="chart-card" style="margin-top:26px;">
     <h3>Strategy comparison</h3>
-    <div class="cdesc">All seven strategies plotted at once across a variable you choose &mdash; see which comes out ahead, and where the ordering flips. Each strategy keeps its own settings from section B; only the X-axis variable changes.</div>
+    <div class="cdesc">All eight strategies plotted at once across a variable you choose &mdash; see which comes out ahead, and where the ordering flips. Each strategy keeps its own settings from section B; only the X-axis variable changes.</div>
     <div class="row2" style="margin-top:8px;max-width:520px;">
       <div class="field">
         <label style="margin-bottom:4px;display:block;">X-axis: what to vary</label>
@@ -443,12 +459,13 @@ const STRAT_DESC = {
   ratchet: "Kitces' Ratcheting Safe Withdrawal Rate, as described by Wade Pfau: flat inflation-adjusted spending, like Constant Amount, except spending steps up (never down) whenever the portfolio's nominal (not inflation-adjusted) value grows well past its starting value.",
   guardrails: "Guyton's Decision Rules (simplified): spend the same inflation-adjusted amount each year, as a share of your current balance. If that share ever climbs above your ceiling %, spending is cut back down to the ceiling. If it ever falls below your floor %, spending is raised up to the floor.",
   inflrule: "Spend a constant inflation-adjusted amount, except skip the inflation raise in any year where the nominal (non-inflation-adjusted) portfolio value has fallen below a set dollar threshold.",
+  annualcheck: "A simple yearly check: spending starts flat and inflation-adjusted. At each year-end, compare your balance to the start of the year, after withdrawals. If it fell more than the 'bad year' trigger, trim next year's spending; if it grew at least the 'good year' trigger, restore full spending; in between, change nothing. An optional extra trim applies if the balance is still below its starting value after a set number of years.",
   actuarial: "Spending is set as a multiple of the IRS RMD-table percentage for the retiree's current age, recalibrated each year as both age and portfolio value change. Naturally variable and never depletes to zero."
 };
 
 const STRAT_LABEL = {
   constant:'Constant Amount', fixedpct:'Constant Percent', floorceil:'Dollar Floor-and-Ceiling',
-  ratchet:'Ratcheting Rule', guardrails:'Spending Guardrails', inflrule:'Inflation Rule', actuarial:'Actuarial Approach'
+  ratchet:'Ratcheting Rule', guardrails:'Spending Guardrails', inflrule:'Inflation Rule', actuarial:'Actuarial Approach', annualcheck:'Annual Check (BOY vs EOY)'
 };
 
 // Reference figures from the workshop's own case study ($100k initial, 34yr, 10%-chance-below-$10k PAY Rule).
@@ -475,7 +492,8 @@ const STRAT_PROFILE = {
   ratchet:    {initRate:3.66, spend95:7141, balance95:105743, yoyVol:2.10},
   guardrails: {initRate:4.14, spend95:4677, balance95:120622, yoyVol:1.55},
   inflrule:   {initRate:4.78, spend95:4462, balance95:97385,  yoyVol:1.20},
-  actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  yoyVol:9.70}
+  actuarial:  {initRate:4.47, spend95:4309, balance95:20350,  yoyVol:9.70},
+  annualcheck:{initRate:4.24, spend95:4244, balance95:137000, yoyVol:3.60} // self-computed, scaled to Constant Amount's row (ratio of this tool's own runs at 60/40, 34yr, defaults 25%/+5%/-10%); not from the deck
 };
 
 // Qualitative differentiators: binary yes/no features not captured by the 3 outcome axes above.
@@ -484,13 +502,15 @@ const QUAL_STRATS = {
   neverDepletes:    ['fixedpct','actuarial'],
   ageBased:         ['actuarial'],
   inflationProtect: ['inflrule'],
-  uncappedUpside:   ['ratchet']
+  uncappedUpside:   ['ratchet'],
+  tieredLifestyle:  ['annualcheck']
 };
 const QUAL_LABEL = {
   neverDepletes: 'never (almost) fully depleting',
   ageBased: 'tying withdrawals to an official age-based formula',
   inflationProtect: 'explicitly reacting to high-inflation periods',
-  uncappedUpside: 'spending that only ever rises, never cuts'
+  uncappedUpside: 'spending that only ever rises, never cuts',
+  tieredLifestyle: 'a simple year-end balance check that trims spending after a bad year and restores it after a good one'
 };
 const QUAL_WEIGHT = 10; // same scale as the "High" numeric dial
 
@@ -561,7 +581,8 @@ function percentile(arr, p){
 function simulate(cfg, nSims, trackFull){
   const {rate, wEq, horizon, fee, mode, simpleParams, strategy,
          fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac,
-         iThreshFrac, actAge, ratchetThreshold, ratchetStep, ratchetMinYears} = cfg;
+         iThreshFrac, actAge, ratchetThreshold, ratchetStep, ratchetMinYears,
+         acCut, acUp, acDown, acCut2, acYears} = cfg;
   const terminal = new Array(nSims);
   const wealthPaths = trackFull ? [] : null;
   const spendPaths = trackFull ? [] : null;
@@ -581,6 +602,9 @@ function simulate(cfg, nSims, trackFull){
     let nominalIndex = 1.0;            // used by 'inflrule'
     let ratchetBase = initialSpend;    // used by 'ratchet' -- only ever steps UP, never down
     let lastRatchetYr = -Infinity;
+    let acBOY = 1.0, acInfl = 0, acNomIdx = 1.0;
+    let acFunded = true;               // used by 'annualcheck'
+    let acLastNomChg = 0;              // last year's EOY-vs-BOY change in nominal balance, AFTER withdrawals
     let ratchetCount = 0;
     const wPath = trackFull ? [1.0] : null;
     const sPath = trackFull ? [] : null;
@@ -643,6 +667,23 @@ function simulate(cfg, nSims, trackFull){
         spend = portfolio>0 ? nominalSpend/nominalIndex : 0;
         if(trackFull){ aPath[yr] = frozen?1:0; }
 
+      } else if(strategy==='annualcheck'){
+        // Year-end BOY-vs-EOY check. Last year's change in the NOMINAL portfolio balance
+        // (EOY balance vs BOY balance, so withdrawals taken during the year count against it) decides whether spending is at its full level or trimmed. Year 1 starts at full.
+        if(yr>0){
+          if(acLastNomChg >= acUp) acFunded = true;
+          else if(acLastNomChg <= -acDown) acFunded = false;
+        }
+        // Optional second tier: once at least `acYears` years have passed, if the NOMINAL balance is still
+        // below its starting value, spending is trimmed by an extra `acCut2` (lifts automatically on recovery).
+        const tier2 = acCut2>0 && yr>=acYears && portfolio*acNomIdx < 1.0;
+        const totalCut = Math.min(0.9, (acFunded?0:acCut) + (tier2?acCut2:0));
+        spend = portfolio>0 ? initialSpend*(1-totalCut) : 0;
+        acNomIdx *= (1+pair.infl);
+        acBOY = portfolio;                 // balance at the start of this year, before withdrawals
+        acInfl = pair.infl;
+        if(trackFull){ aPath[yr] = acFunded?0:1; bPath[yr] = tier2?1:0; }
+
       } else { // actuarial
         const age = actAge + yr;
         const pct = actMultiplier/rmdDivisor(age);
@@ -656,6 +697,7 @@ function simulate(cfg, nSims, trackFull){
       if(portfolio<0) portfolio=0;
       portfolio *= (1+portReturn);
       if(portfolio<0) portfolio=0;
+      if(strategy==='annualcheck'){ acLastNomChg = acBOY>0 ? (portfolio/acBOY)*(1+acInfl)-1 : -1; }
 
       if(trackFull){ wPath.push(portfolio); sPath.push(spend); }
     }
@@ -814,6 +856,8 @@ const TRIGGER_CONFIG = {
                desc:'Of all simulated scenarios, the % where the portfolio\u2019s nominal value crossed the growth trigger that year, stepping spending up.'},
   guardrails: {labelA:'Hit ceiling rail (spending cut)', colorA:'#a2402f', labelB:'Hit floor rail (spending raised)', colorB:'#3e6e63',
                desc:'Of all simulated scenarios, the % where the current withdrawal rate breached a rail that year, forcing a reset.'},
+  annualcheck:{labelA:'Spending trimmed (bad-year trigger)', colorA:'#a2402f', labelB:'Extra trim (still below starting value)', colorB:'#9c7a2e',
+               desc:'Of all simulated scenarios, the % where spending was trimmed that year because the prior year-end balance, after withdrawals, fell more than your bad-year trigger and has not yet recovered past the good-year trigger. Taller bars = more years of reduced spending. The second series (if you turn on the extra trim) shows the share of scenarios where the balance was still below its starting value after the set number of years.'},
   inflrule:   {labelA:'Inflation raise skipped (frozen)', colorA:'#a2402f', labelB:null, colorB:null,
                desc:'Of all simulated scenarios, the % where the nominal portfolio was below the threshold that year, so the usual inflation raise was skipped.'}
 };
@@ -821,7 +865,7 @@ const TRIGGER_CONFIG = {
 // ---------- chart drawing ----------
 const STRAT_COLORS = {
   constant:'#212C37', fixedpct:'#9c7a2e', floorceil:'#3e6e63', ratchet:'#a2402f',
-  guardrails:'#5b7fa6', inflrule:'#7a5ea8', actuarial:'#b0a8a0'
+  guardrails:'#5b7fa6', inflrule:'#7a5ea8', actuarial:'#b0a8a0', annualcheck:'#2f8f9d'
 };
 
 function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
@@ -1082,13 +1126,18 @@ function syncLabels(){
   $('v_gFloor').textContent = $('gFloor').value+'% of current';
   $('v_iThresh').textContent = $('iThresh').value+'% of initial';
   $('v_actAge').textContent = $('actAge').value;
+  $('v_acCut').textContent = $('acCut').value+'%';
+  $('v_acUp').textContent = '+'+$('acUp').value+'%';
+  $('v_acDown').textContent = '-'+$('acDown').value+'%';
+  $('v_acCut2').textContent = $('acCut2').value==='0' ? 'Off' : '+'+$('acCut2').value+'%';
+  $('v_acYears').textContent = $('acYears').value+' years';
 
   const strat = $('strategy').value;
   document.querySelectorAll('.strat-param').forEach(el=>{
     el.style.display = (el.dataset.strat === strat) ? 'block' : 'none';
   });
 }
-['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','ratchetThresh','ratchetStep','ratchetYears','gCap','gFloor','iThresh','actAge'].forEach(id=>{
+['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','ratchetThresh','ratchetStep','ratchetYears','gCap','gFloor','iThresh','actAge','acCut','acUp','acDown','acCut2','acYears'].forEach(id=>{
   $(id).addEventListener('input', syncLabels);
 });
 $('strategy').addEventListener('change', syncLabels);
@@ -1112,7 +1161,7 @@ function feasibilityAdvice(strategy, direction, p){
       ? `<b>Most likely fix:</b> the withdrawal-rate floor in section B is set higher than this allocation/horizon can sustain &mdash; it's forcing spending up regardless of the starting rate. Try lowering the floor.`
       : `<b>Most likely fix:</b> the withdrawal-rate ceiling in section B is set low enough that it's capping spending well before any real risk shows up. Try raising the ceiling, or tighten the downside target in section D if the ceiling is intentional.`;
   }
-  // constant, fixedpct, ratchet, inflrule, actuarial have no independent spend-floor/cap parameter
+  // constant, fixedpct, ratchet, inflrule, annualcheck, actuarial have no independent spend-floor/cap parameter
   // in section B that can be blamed the way floorceil/guardrails can -- the fix has to come from
   // the downside target itself or the market assumptions.
   return direction==='low'
@@ -1142,6 +1191,9 @@ function strategyResultNote(strategy, d){
   }
   if(strategy==='inflrule'){
     return `Spending rises with inflation every year, except in years right after the *nominal* (non-inflation-adjusted) portfolio value falls below ${(d.iThreshFrac*100).toFixed(0)}% of its starting nominal value &mdash; in those years the raise is skipped, which is why real spending can drift down over time (10th pct: ${fmt(d.spendFinalP10)}) even though the rule never explicitly cuts spending.`;
+  }
+  if(strategy==='annualcheck'){
+    return `<b>What you're seeing:</b> spending starts at ${fmt(d.dollarSpend)} a year in today's dollars (the solved <b>${d.solvedRatePct.toFixed(2)}%</b>). That is the highest full-level rate that still meets your downside target <i>including</i> the years spending is trimmed.<br><br><b>The rule:</b> each year-end, your balance is compared to the start of the year, after withdrawals. Down more than ${(d.acDown*100).toFixed(0)}% \u2192 spending is trimmed by ${(d.acCut*100).toFixed(0)}% (to ${fmt(d.dollarSpend*(1-d.acCut))}). Up at least ${(d.acUp*100).toFixed(0)}% \u2192 back to full. In between \u2192 unchanged.${d.acCut2>0 ? ` <b>Extra trim:</b> after year ${d.acYears}, any time the balance is still below its starting value, spending is cut a further ${(d.acCut2*100).toFixed(0)}% (down to ${fmt(d.dollarSpend*(1-Math.min(0.9,d.acCut+d.acCut2)))} if a bad-year trim applies too).` : ''}<br><br><b>How to read the results:</b> the lower percentiles of the spending chart show the trimmed years; the upper ones show years at full spending. The bar chart shows what share of scenarios are in a trimmed year at each point. If that share is high early on, the triggers are tight for this allocation, so try a lower good-year trigger or a smaller trim.`;
   }
   if(strategy==='actuarial'){
     return `Spending is set as a % of the current balance, using an IRS-style percentage that rises automatically with your age (starting age ${d.actAge}). <b style="color:var(--rust);">Remember: this strategy's calibration is flagged unvalidated</b> &mdash; treat these figures as directional only.`;
@@ -1177,10 +1229,15 @@ function runCalc(){
   const ratchetThreshold = 1 + parseFloat($('ratchetThresh').value)/100;
   const ratchetStep = parseFloat($('ratchetStep').value)/100;
   const ratchetMinYears = parseFloat($('ratchetYears').value);
+  const acCut = parseFloat($('acCut').value)/100;
+  const acUp = parseFloat($('acUp').value)/100;
+  const acDown = parseFloat($('acDown').value)/100;
+  const acCut2 = parseFloat($('acCut2').value)/100;
+  const acYears = parseFloat($('acYears').value);
 
   const cfg = {wEq, horizon, fee, mode, simpleParams, strategy,
                fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
-               ratchetThreshold, ratchetStep, ratchetMinYears};
+               ratchetThreshold, ratchetStep, ratchetMinYears, acCut, acUp, acDown, acCut2, acYears};
 
   const solvedRate = solveRate(cfg, targetProb, floorFrac);
   const feasibility = checkFeasibility(cfg, targetProb, floorFrac);
@@ -1242,7 +1299,7 @@ function runCalc(){
       <div>Median spend, yr ${horizon}<b>${fmtUSD(spendFinalP50)}</b></div>
       <div>90th pct. spend, yr ${horizon}<b>${fmtUSD(spendFinalP90)}</b></div>
     </div>
-    <div class="strategy-desc" style="margin-top:12px;">${strategyResultNote(strategy, {dollarSpend, spendFinalP10, spendFinalP50, spendFinalP90, finalP10, finalP50, finalP90, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge, portfolio0, solvedRatePct: solvedRate*100, ratchetThreshold, ratchetStep, ratchetMinYears, ratchetCounts: finalSim.ratchetCounts})}</div>`;
+    <div class="strategy-desc" style="margin-top:12px;">${strategyResultNote(strategy, {dollarSpend, spendFinalP10, spendFinalP50, spendFinalP90, finalP10, finalP50, finalP90, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge, portfolio0, solvedRatePct: solvedRate*100, ratchetThreshold, ratchetStep, ratchetMinYears, acCut, acUp, acDown, acCut2, acYears, ratchetCounts: finalSim.ratchetCounts})}</div>`;
 
   drawFan($('wealthChart'), years, wealthBands, {
     outerFill:'rgba(143,182,172,0.35)', innerFill:'rgba(62,110,99,0.35)',
@@ -1414,7 +1471,7 @@ $('findBtn').onclick = ()=>{
 
   $('recBox').innerHTML = `
     <div class="recTitle">Recommended: ${STRAT_LABEL[top.key]}</div>
-    <div class="recWhy">Among the seven strategies, ${axisSentence}</div>`;
+    <div class="recWhy">Among the eight strategies, ${axisSentence}</div>`;
 
   const maxScore = ranked[0].score;
   const rows = ranked.map((r,i)=>`
@@ -1464,7 +1521,7 @@ $('applyPayBtn').onclick = ()=>{
 // ---------- Reset to defaults ----------
 const DEFAULTS = {
   portfolio:1000000, alloc:60, horizon:30, fee:0.30,
-  fcFloor:3.5, fcCap:5.0, ratchetThresh:50, ratchetStep:10, ratchetYears:3, gCap:15, gFloor:3, iThresh:100, actAge:72,
+  fcFloor:3.5, fcCap:5.0, ratchetThresh:50, ratchetStep:10, ratchetYears:3, gCap:15, gFloor:3, iThresh:100, actAge:72, acCut:20, acUp:5, acDown:10, acCut2:0, acYears:5,
   s_mean:7.0, s_std:19.0, b_mean:2.0, b_std:7.5, corr:0, i_mean:2.5, i_std:4.0,
   prob:10, floor:15
 };
@@ -1571,17 +1628,22 @@ function runComparison(){
   const ratchetThreshold = 1 + parseFloat($('ratchetThresh').value)/100;
   const ratchetStep = parseFloat($('ratchetStep').value)/100;
   const ratchetMinYears = parseFloat($('ratchetYears').value);
+  const acCut = parseFloat($('acCut').value)/100;
+  const acUp = parseFloat($('acUp').value)/100;
+  const acDown = parseFloat($('acDown').value)/100;
+  const acCut2 = parseFloat($('acCut2').value)/100;
+  const acYears = parseFloat($('acYears').value);
   const wEqCurrent = parseFloat($('alloc').value)/100;
 
   const baseCfg = {mode, simpleParams, fee, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
-                   ratchetThreshold, ratchetStep, ratchetMinYears, wEq:wEqCurrent};
+                   ratchetThreshold, ratchetStep, ratchetMinYears, acCut, acUp, acDown, acCut2, acYears, wEq:wEqCurrent};
 
   const xVar = $('cmpXVar').value;
   const yVar = $('cmpYVar').value;
   const xConf = CMP_X_CONFIG[xVar];
   const xVals = xConf.vals;
 
-  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial'];
+  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial','annualcheck'];
   const series = {};
   for(const strat of strategies){
     series[strat] = xVals.map(x=>{
@@ -1662,7 +1724,7 @@ document.querySelectorAll('.ref-rate-btn').forEach(btn=>{
         corr: parseFloat($('corr').value), iMean: parseFloat($('i_mean').value)/100, iStd: parseFloat($('i_std').value)/100
       };
       const cfg = {wEq, horizon, fee, mode, simpleParams, strategy:'constant',
-                   fcFloorFrac:0, fcCapFrac:1, gCapFrac:1, gFloorFrac:0, iThreshFrac:1, actAge:72};
+                   fcFloorFrac:0, fcCapFrac:1, gCapFrac:1, gFloorFrac:0, iThreshFrac:1, actAge:72, acCut:0.20, acUp:0.05, acDown:0.10, acCut2:0, acYears:5};
       const refRate = solveRate(cfg, targetProb, floorFrac);
       const currentFloorPct = parseFloat($('fcFloor').value);
       const refPct = refRate*100;

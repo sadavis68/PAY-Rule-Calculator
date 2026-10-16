@@ -296,12 +296,13 @@ canvas{width:100%;display:block;}
         </div>
 
         <div class="field strat-param" data-strat="annualcheck">
-          <label>Spending trim after a bad year <span class="val" id="v_acCut">20%</span></label>
-          <input type="range" id="acCut" min="5" max="40" step="5" value="20">
-          <label style="margin-top:8px;">&quot;Good year&quot; trigger &mdash; restore full spending if your balance grew at least this much <span class="val" id="v_acUp">+5%</span></label>
+          <label>&quot;Good year&quot; trigger &mdash; restore full spending if your balance grew at least this much <span class="val" id="v_acUp">+5%</span></label>
           <input type="range" id="acUp" min="0" max="20" step="1" value="5">
           <label style="margin-top:8px;">&quot;Bad year&quot; trigger &mdash; trim spending if your balance fell more than this <span class="val" id="v_acDown">-10%</span></label>
           <input type="range" id="acDown" min="0" max="30" step="1" value="10">
+          <label style="margin-top:8px;">Spending trim after a bad year <span class="val" id="v_acCut">20%</span></label>
+          <input type="range" id="acCut" min="5" max="40" step="5" value="20">
+          <div class="footer-note" id="acExample" style="margin:8px 0 0;padding:0;border:none;font-weight:600;"></div>
           <label style="margin-top:8px;">Optional extra trim if the balance is still below its starting value <span class="val" id="v_acCut2">Off</span></label>
           <input type="range" id="acCut2" min="0" max="20" step="5" value="0">
           <label style="margin-top:8px;">&hellip;checked after this many years <span class="val" id="v_acYears">5 years</span></label>
@@ -1127,6 +1128,7 @@ function syncLabels(){
   $('v_iThresh').textContent = $('iThresh').value+'% of initial';
   $('v_actAge').textContent = $('actAge').value;
   $('v_acCut').textContent = $('acCut').value+'%';
+  $('acExample').innerHTML = 'Example: if your balance falls more than '+$('acDown').value+'% in a year, next year\'s spending is cut '+$('acCut').value+'%; if it grows at least '+$('acUp').value+'%, spending goes back to full.';
   $('v_acUp').textContent = '+'+$('acUp').value+'%';
   $('v_acDown').textContent = '-'+$('acDown').value+'%';
   $('v_acCut2').textContent = $('acCut2').value==='0' ? 'Off' : '+'+$('acCut2').value+'%';

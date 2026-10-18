@@ -61,6 +61,8 @@ select{font-family:'Inter',sans-serif;font-size:13px;}
 .strat-param{display:none;padding:10px 12px;background:var(--paper-dark);border-left:2px solid var(--brass);}
 .ref-rate-btn{margin-top:10px;width:100%;padding:6px 8px;background:#fff;border:1px solid var(--teal);color:var(--teal);font-family:'IBM Plex Mono',monospace;font-size:10.5px;cursor:pointer;border-radius:2px;}
 .ref-rate-btn:hover{background:var(--teal);color:#fff;}
+.simple-preset{padding:5px 9px;background:#fff;border:1px solid var(--teal);color:var(--teal);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;border-radius:3px;}
+.simple-preset:hover{background:var(--teal);color:#fff;}
 .ref-rate-out{font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;min-height:0;}
 .ref-rate-out.ready{color:var(--ink);}
 
@@ -182,6 +184,9 @@ canvas{width:100%;display:block;}
         <label class="check-row"><input type="checkbox" data-qual="ageBased"> Withdrawals tied to an official age-based formula (the IRS RMD methodology), not just market performance</label>
         <label class="check-row"><input type="checkbox" data-qual="inflationProtect"> A rule that explicitly reacts to high-inflation periods, not just market downturns</label>
         <label class="check-row"><input type="checkbox" data-qual="tieredLifestyle"> A simple yearly check &mdash; compare the balance at the end of the year to the start, and trim spending after a bad year / restore it after a good one</label>
+        <label class="check-row"><input type="checkbox" data-qual="guaranteedIncome"> I have guaranteed income (Social Security, a pension or an annuity) that covers my essential spending, so portfolio withdrawals can flex</label>
+        <label class="check-row"><input type="checkbox" data-qual="canCut"> I could live with a one-time cut of about 20% in my spending if markets turn bad</label>
+        <label class="check-row"><input type="checkbox" data-qual="legacy"> Leaving money behind matters to me more than maximizing my income</label>
         <label class="check-row"><input type="checkbox" data-qual="uncappedUpside"> Spending that only ever increases &mdash; never a cut, even if that means a bad sequence could still deplete the portfolio</label>
       </div>
     </div>
@@ -324,6 +329,12 @@ canvas{width:100%;display:block;}
           <button id="btnSimple">Simple (your inputs)</button>
         </div>
         <div id="simpleInputs" class="simple-only">
+          <div class="footer-note" style="margin:0 0 8px;padding:0;border:none;"><b>What this does.</b> Instead of replaying history, the calculator runs thousands of random 30-year (or your horizon) retirements. Each year it draws a stock return, a bond return and inflation from the averages and ups-and-downs you enter below, then blends stocks and bonds using your equity allocation in section A. Use it to ask &ldquo;what if the future is worse (or better) than history?&rdquo;. All returns are <i>after inflation</i> (&ldquo;real&rdquo;), except the inflation inputs themselves.<br>&bull; <b>Mean</b> = the average yearly return. <b>Std dev</b> = how much it bounces around from year to year (higher = bumpier).<br>&bull; <b>Correlation</b> = how much stocks and bonds move together (0 = unrelated).</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+            <button type="button" class="simple-preset" data-p="7,19,2,7.5,0,2.5,4" style="width:auto;margin:0;">History-like</button>
+            <button type="button" class="simple-preset" data-p="5,19,1,7.5,0,2.5,4" style="width:auto;margin:0;">Lower returns</button>
+            <button type="button" class="simple-preset" data-p="5,19,-0.5,7.5,0.3,3.5,4" style="width:auto;margin:0;">Weak bonds, higher inflation</button>
+          </div>
           <div class="row2">
             <div class="field"><label>Stock mean (real)</label><input type="number" id="s_mean" value="7.0" step="0.1"></div>
             <div class="field"><label>Stock std dev</label><input type="number" id="s_std" value="19.0" step="0.5"></div>
@@ -339,6 +350,7 @@ canvas{width:100%;display:block;}
             <div class="field"><label>Inflation mean</label><input type="number" id="i_mean" value="2.5" step="0.1"></div>
             <div class="field"><label>Inflation std dev</label><input type="number" id="i_std" value="4.0" step="0.5"></div>
           </div>
+          <div class="footer-note" id="simpleSummary" style="margin:6px 0 0;padding:6px 8px;border:1px solid var(--line, #DDD4BC);"></div>
         </div>
         <div class="footer-note" id="histNote" style="margin-top:2px;padding-top:0;border-top:none;">Draws bootstrap-resampled year-pairs of real S&amp;P 500 and 10-yr Treasury returns, 1928&ndash;2018 (source: Damodaran/NYU Stern, CPI-deflated). Preserves each year's stock&ndash;bond correlation.</div>
       </section>
@@ -429,6 +441,9 @@ canvas{width:100%;display:block;}
           <option value="vol">Year-to-year spending volatility</option>
           <option value="wealth">Median ending wealth (legacy)</option>
           <option value="depletion">Chance of full depletion</option>
+          <option value="maxCut">Largest one-year spending cut</option>
+          <option value="lowYears">Years with spending below 80% of start</option>
+          <option value="p10spend">Spending in the worst 10% of outcomes</option>
         </select>
       </div>
     </div>
@@ -436,9 +451,48 @@ canvas{width:100%;display:block;}
     <div id="cmpWrap" style="display:none;margin-top:14px;">
       <canvas id="cmpChart" height="340" data-cssh="340"></canvas>
       <div class="legend" id="cmpLegend"></div>
-      <div class="finder-sub" style="margin-top:20px;">All 4 categories at your current settings</div>
-      <div class="cdesc" style="margin-bottom:8px;">Every strategy, side by side, across all four measures at once &mdash; not swept across the X-axis variable, just where your dashboard is set right now. Best value in each column is highlighted. Uses sections A, B, C, and D as currently set for <b>every</b> strategy (not just the one selected above) &mdash; not the starting portfolio dollar amount, which doesn't affect any of these percentages.</div>
+      <div class="finder-sub" style="margin-top:20px;">All 7 measures at your current settings</div>
+      <div class="cdesc" style="margin-bottom:8px;">Every strategy, side by side, across seven measures at once, including how bad spending gets in the worst cases &mdash; not swept across the X-axis variable, just where your dashboard is set right now. Best value in each column is highlighted. Uses sections A, B, C, and D as currently set for <b>every</b> strategy (not just the one selected above) &mdash; not the starting portfolio dollar amount, which doesn't affect any of these percentages.</div>
       <table class="rank-table" id="cmpTable"></table>
+    </div>
+  </div>
+
+  <div class="chart-card" style="margin-top:26px;" id="replayCard">
+    <h3>Historical replay</h3>
+    <div class="cdesc">Pick a real retirement start year and watch every strategy play out through the actual market, year by year. Each strategy starts at the rate it solves to under your current settings (section A&ndash;D), then spends through that exact history, using the real stock, bond and inflation returns of that period rather than random draws. Use it to see how a strategy behaves in a crash, a slow grind, or a high-inflation period.</div>
+    <div class="field" style="max-width:360px;">
+      <label style="margin-bottom:4px;display:block;">Retirement start year</label>
+      <select id="replayYear"></select>
+    </div>
+    <button class="finder-btn" id="replayBtn" style="margin-top:6px;max-width:260px;">Replay this period</button>
+    <div class="field" style="max-width:360px;margin-top:10px;">
+      <label style="margin-bottom:4px;display:block;">Stress grid columns</label>
+      <select id="gridStrat">
+        <option value="all">All strategies (at your current allocation)</option>
+        <option value="constant">One strategy across 30&ndash;100% stocks: Constant Amount</option>
+        <option value="fixedpct">&hellip; Constant Percent</option>
+        <option value="floorceil">&hellip; Dollar Floor-and-Ceiling</option>
+        <option value="ratchet">&hellip; Ratcheting Rule</option>
+        <option value="guardrails">&hellip; Spending Guardrails</option>
+        <option value="inflrule">&hellip; Inflation Rule</option>
+        <option value="actuarial">&hellip; Actuarial Approach</option>
+        <option value="annualcheck">&hellip; Annual Check (BOY vs EOY)</option>
+      </select>
+    </div>
+    <button class="finder-btn" id="gridBtn" style="margin-top:6px;max-width:300px;">Stress grid: key start years</button>
+    <div id="gridWrap" style="display:none;margin-top:14px;">
+      <div class="finder-sub">Ending portfolio (% of starting value) by start year, at your current settings</div>
+      <table class="rank-table" id="gridTable"></table>
+      <div class="footer-note" id="gridNote" style="margin-top:2px;padding-top:0;border-top:none;"></div>
+    </div>
+    <div id="replayWrap" style="display:none;margin-top:14px;">
+      <div class="finder-sub">Portfolio value (% of starting value, inflation-adjusted)</div>
+      <canvas id="replayWealth" height="300" data-cssh="300"></canvas>
+      <div class="finder-sub" style="margin-top:18px;">Annual spending (% of starting portfolio, inflation-adjusted)</div>
+      <canvas id="replaySpend" height="300" data-cssh="300"></canvas>
+      <div class="legend" id="replayLegend"></div>
+      <table class="rank-table" id="replayTable" style="margin-top:14px;"></table>
+      <div class="footer-note" id="replayNote" style="margin-top:2px;padding-top:0;border-top:none;"></div>
     </div>
   </div>
 </div>
@@ -462,6 +516,19 @@ const STRAT_DESC = {
   inflrule: "Spend a constant inflation-adjusted amount, except skip the inflation raise in any year where the nominal (non-inflation-adjusted) portfolio value has fallen below a set dollar threshold.",
   annualcheck: "A simple yearly check: spending starts flat and inflation-adjusted. At each year-end, compare your balance to the start of the year, after withdrawals. If it fell more than the 'bad year' trigger, trim next year's spending; if it grew at least the 'good year' trigger, restore full spending; in between, change nothing. An optional extra trim applies if the balance is still below its starting value after a set number of years.",
   actuarial: "Spending is set as a multiple of the IRS RMD-table percentage for the retiree's current age, recalibrated each year as both age and portfolio value change. Naturally variable and never depletes to zero."
+};
+
+// One-line "best fit / watch out" guidance shown with the Strategy Finder recommendation.
+// Based on this tool's own runs across allocations (30-90% equity), horizons (20-40 yrs) and breach targets (5-20%).
+const STRAT_FIT = {
+  constant:   {fit:'You want the smoothest, most predictable income and the most wealth left over.', watch:'Starts lower than the flexible strategies in most cases and never adjusts, so it cannot respond to a bad sequence.'},
+  fixedpct:   {fit:'You want a portfolio that almost never runs out and can accept income that moves with the market.', watch:'Spending can swing sharply from year to year and falls with the balance.'},
+  floorceil:  {fit:'You want income that follows the market but within a dollar floor and ceiling you set.', watch:'The floor and ceiling drive the result more than the rate does; set them with care.'},
+  ratchet:    {fit:'You want spending that only rises, and can accept a lower starting rate to get there.', watch:'Often starts below Constant Amount, especially over long horizons, and gives up end wealth for the raises.'},
+  guardrails: {fit:'You want mostly steady spending with automatic cuts or raises only when the withdrawal rate drifts too far.', watch:'At high stock allocations or strict targets its starting rate can fall below Constant Amount.'},
+  inflrule:   {fit:'You want the highest starting income and are comfortable skipping inflation raises after weak markets.', watch:'Leaves less wealth at the end and weaker spending in the worst 10% of outcomes.'},
+  annualcheck:{fit:'You want income above a flat strategy, do not need spending to grow, and can accept a one-time step down after a bad year. It does best with strict safety targets, long horizons, high stock allocations, or short horizons.', watch:'Spending never rises above the starting level, and the trim shows up as a visible step (about 3\u20135% average yearly change). Gains over Constant Amount shrink for low-stock portfolios. In long, slow declines where no single year falls past the bad-year trigger (like retiring in the mid-1960s), it can end with less than Constant Amount; the optional extra trim is meant to help with that.'},
+  actuarial:  {fit:'You want withdrawals tied to an official age-based table so spending naturally rises as a share of the balance with age.', watch:'Spending is variable, and this tool\u2019s calibration for it is unvalidated.'}
 };
 
 const STRAT_LABEL = {
@@ -504,13 +571,20 @@ const QUAL_STRATS = {
   ageBased:         ['actuarial'],
   inflationProtect: ['inflrule'],
   uncappedUpside:   ['ratchet'],
-  tieredLifestyle:  ['annualcheck']
+  tieredLifestyle:  ['annualcheck'],
+  // Judgement tilts based on this tool's own runs, not separate simulations:
+  guaranteedIncome: ['fixedpct','actuarial','guardrails','floorceil','annualcheck'], // strategies that flex the portfolio draw
+  canCut:           ['annualcheck','guardrails','inflrule','floorceil'],           // strategies that cut spending in bad times
+  legacy:           ['constant','annualcheck']                                      // highest median ending wealth in the 60/40 reference runs
 };
 const QUAL_LABEL = {
   neverDepletes: 'never (almost) fully depleting',
   ageBased: 'tying withdrawals to an official age-based formula',
   inflationProtect: 'explicitly reacting to high-inflation periods',
   uncappedUpside: 'spending that only ever rises, never cuts',
+  guaranteedIncome: 'guaranteed income covering essentials, which lets portfolio withdrawals flex',
+  canCut: 'willingness to accept a one-time cut of about 20% in spending',
+  legacy: 'leaving money behind',
   tieredLifestyle: 'a simple year-end balance check that trims spending after a bad year and restores it after a good one'
 };
 const QUAL_WEIGHT = 10; // same scale as the "High" numeric dial
@@ -553,7 +627,9 @@ function axisLeaders(){
   };
 }
 
+let replaySeq = null, replayIdx = 0; // when set, simulate() walks this exact historical sequence instead of resampling
 function randHistPair(){
+  if(replaySeq){ return replaySeq[replayIdx++]; }
   const i = Math.floor(Math.random()*HIST.length);
   return {s: HIST[i].s/100, b: HIST[i].b/100, infl: HIST[i].i/100};
 }
@@ -761,9 +837,14 @@ function stratBaseSims(strategy, base){
   return (strategy==='floorceil' || strategy==='guardrails') ? Math.round(base*1.7) : base;
 }
 
+// Set by solveRate/solveRateFast: true when the bisection never left one end of its search range,
+// i.e. the returned rate is that strategy's LIMIT, not a genuine solution to the downside target.
+let lastSolveLimited = false;
 function solveRate(cfg, targetProb, floorFrac){
   let {lo, hi} = effectiveBounds(cfg);
+  lastSolveLimited = false;
   if(lo >= hi) return lo; // invalid configuration (e.g. guardrails floor >= ceiling); caller should flag this
+  const lo0 = lo, hi0 = hi;
   const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 2600));
   for(let iter=0; iter<34; iter++){
     const mid=(lo+hi)/2;
@@ -771,6 +852,7 @@ function solveRate(cfg, targetProb, floorFrac){
     const p = percentile(res.terminal, targetProb);
     if(p > floorFrac){ lo = mid; } else { hi = mid; }
   }
+  lastSolveLimited = (lo===lo0) || (hi===hi0);
   return (lo+hi)/2;
 }
 
@@ -782,7 +864,9 @@ function solveRate(cfg, targetProb, floorFrac){
 // few extra seconds per click (still fast enough for an on-demand button with a loading state).
 function solveRateFast(cfg, targetProb, floorFrac){
   let {lo, hi} = effectiveBounds(cfg);
+  lastSolveLimited = false;
   if(lo >= hi) return lo;
+  const lo0 = lo, hi0 = hi;
   const nSims = adaptiveSimCount(targetProb, stratBaseSims(cfg.strategy, 2600));
   for(let iter=0; iter<24; iter++){
     const mid=(lo+hi)/2;
@@ -790,6 +874,7 @@ function solveRateFast(cfg, targetProb, floorFrac){
     const p = percentile(res.terminal, targetProb);
     if(p > floorFrac){ lo = mid; } else { hi = mid; }
   }
+  lastSolveLimited = (lo===lo0) || (hi===hi0);
   return (lo+hi)/2;
 }
 
@@ -869,7 +954,7 @@ const STRAT_COLORS = {
   guardrails:'#5b7fa6', inflrule:'#7a5ea8', actuarial:'#b0a8a0', annualcheck:'#2f8f9d'
 };
 
-function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
+function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel, limited){
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 560;
   const cssH = parseInt(canvas.dataset.cssh || canvas.getAttribute('height')) || 260;
@@ -930,9 +1015,10 @@ function drawMultiLine(canvas, xVals, series, xFmt, yFmt, xLabel, yLabel){
     // small markers
     for(let i=0;i<xN;i++){
       ctx.beginPath();
-      ctx.arc(xAt(i), yAt(arr[i]), 2.4, 0, Math.PI*2);
-      ctx.fillStyle = STRAT_COLORS[key];
-      ctx.fill();
+      const lim = limited && limited[key] && limited[key][i];
+      ctx.arc(xAt(i), yAt(arr[i]), lim ? 4 : 2.4, 0, Math.PI*2);
+      if(lim){ ctx.fillStyle = '#FBF7EA'; ctx.fill(); ctx.strokeStyle = STRAT_COLORS[key]; ctx.lineWidth = 1.6; ctx.stroke(); }
+      else { ctx.fillStyle = STRAT_COLORS[key]; ctx.fill(); }
     }
   }
 
@@ -1102,6 +1188,12 @@ const fmtUSD = v => '$'+Math.round(v).toLocaleString('en-US');
 const fmtUSDk = v => v>=1000 ? '$'+(v/1000).toFixed(0)+'k' : '$'+Math.round(v);
 
 let mode = 'hist';
+document.querySelectorAll('.simple-preset').forEach(b=>b.addEventListener('click', ()=>{
+  const v = b.dataset.p.split(',').map(Number);
+  ['s_mean','s_std','b_mean','b_std'].forEach((id,i)=>{ $(id).value = v[i]; });
+  $('corr').value = v[4]; $('i_mean').value = v[5]; $('i_std').value = v[6];
+  syncLabels();
+}));
 $('btnHist').onclick = ()=>{mode='hist'; $('btnHist').classList.add('active'); $('btnSimple').classList.remove('active'); $('simpleInputs').classList.remove('show'); $('histNote').style.display='block';};
 $('btnSimple').onclick = ()=>{mode='simple'; $('btnSimple').classList.add('active'); $('btnHist').classList.remove('active'); $('simpleInputs').classList.add('show'); $('histNote').style.display='none';};
 
@@ -1133,13 +1225,22 @@ function syncLabels(){
   $('v_acDown').textContent = '-'+$('acDown').value+'%';
   $('v_acCut2').textContent = $('acCut2').value==='0' ? 'Off' : '+'+$('acCut2').value+'%';
   $('v_acYears').textContent = $('acYears').value+' years';
+  {
+    const w = parseFloat($('alloc').value)/100, fee = parseFloat($('fee').value)/100;
+    const sM = parseFloat($('s_mean').value)/100, sS = parseFloat($('s_std').value)/100;
+    const bM = parseFloat($('b_mean').value)/100, bS = parseFloat($('b_std').value)/100;
+    const rho = parseFloat($('corr').value);
+    const mu = w*sM + (1-w)*bM - fee;
+    const sd = Math.sqrt(Math.max(0, w*w*sS*sS + (1-w)*(1-w)*bS*bS + 2*w*(1-w)*rho*sS*bS));
+    $('simpleSummary').innerHTML = '<b>What your inputs mean for your portfolio:</b> at '+Math.round(w*100)+'% stocks, your portfolio is assumed to earn about <b>'+(mu*100).toFixed(1)+'%</b> a year after inflation and fees, with a typical year landing within about ±<b>'+(sd*100).toFixed(1)+'%</b> of that. For comparison, the 1928\u20132018 history at 60% stocks averaged about 5.8% a year after inflation with a spread of about 12% (stocks alone: 8.2% and 19%; bonds: 2.1% and 8.6%).';
+  }
 
   const strat = $('strategy').value;
   document.querySelectorAll('.strat-param').forEach(el=>{
     el.style.display = (el.dataset.strat === strat) ? 'block' : 'none';
   });
 }
-['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','ratchetThresh','ratchetStep','ratchetYears','gCap','gFloor','iThresh','actAge','acCut','acUp','acDown','acCut2','acYears'].forEach(id=>{
+['portfolio','alloc','horizon','fee','corr','prob','floor','fcFloor','fcCap','ratchetThresh','ratchetStep','ratchetYears','gCap','gFloor','iThresh','actAge','acCut','acUp','acDown','acCut2','acYears','s_mean','s_std','b_mean','b_std','i_mean','i_std'].forEach(id=>{
   $(id).addEventListener('input', syncLabels);
 });
 $('strategy').addEventListener('change', syncLabels);
@@ -1460,7 +1561,10 @@ $('findBtn').onclick = ()=>{
   let axisSentence;
   if(top.matchedQuals.length){
     const q = top.matchedQuals[0];
-    axisSentence = `you asked for ${QUAL_LABEL[q]} \u2014 ${STRAT_LABEL[top.key]} is built specifically around that.`;
+    const softQ = ['guaranteedIncome','canCut','legacy'];
+    axisSentence = softQ.includes(q)
+      ? `you told us about ${QUAL_LABEL[q]} \u2014 ${STRAT_LABEL[top.key]} tends to fit that best in this tool's runs.`
+      : `you asked for ${QUAL_LABEL[q]} \u2014 ${STRAT_LABEL[top.key]} is built specifically around that.`;
   } else {
     const weights = {spend:wSpend, stability:wStability, wealth:wWealth};
     const topAxis = Object.keys(weights).reduce((a,b)=>weights[a]>=weights[b]?a:b);
@@ -1473,7 +1577,8 @@ $('findBtn').onclick = ()=>{
 
   $('recBox').innerHTML = `
     <div class="recTitle">Recommended: ${STRAT_LABEL[top.key]}</div>
-    <div class="recWhy">Among the eight strategies, ${axisSentence}</div>`;
+    <div class="recWhy">Among the eight strategies, ${axisSentence}</div>
+    <div class="recWhy" style="margin-top:8px;"><b>Best fit:</b> ${STRAT_FIT[top.key].fit}<br><b>Watch out for:</b> ${STRAT_FIT[top.key].watch}</div>`;
 
   const maxScore = ranked[0].score;
   const rows = ranked.map((r,i)=>`
@@ -1577,7 +1682,8 @@ const CMP_X_CONFIG = {
 };
 const CMP_Y_LABEL = {
   rate:'Solved initial spending rate', vol:'Year-to-year spending volatility (avg % change)',
-  wealth:'Median ending wealth (% of initial)', depletion:'Chance of full depletion'
+  wealth:'Median ending wealth (% of initial)', depletion:'Chance of full depletion',
+  maxCut:'Largest one-year spending cut (typical scenario, %)', lowYears:'Years with spending below 80% of the starting level (%)', p10spend:'Average spending in the worst 10% of outcomes (% of start)'
 };
 
 function computeYMetric(yVar, cfg, rate, targetProb, floorFrac){
@@ -1598,6 +1704,21 @@ function computeYMetric(yVar, cfg, rate, targetProb, floorFrac){
     }
     return count ? (total/count*100) : 0;
   }
+  if(yVar==='maxCut' || yVar==='lowYears' || yVar==='p10spend'){
+    const perPath = sim.spendPaths.map(path=>{
+      let maxCut = 0, low = 0, sum = 0;
+      const base0 = path[0] > 0 ? path[0] : 1e-9;
+      for(let yr=0; yr<path.length; yr++){
+        sum += path[yr];
+        if(path[yr] < 0.8*base0) low++;
+        if(yr>0 && path[yr-1]>0) maxCut = Math.max(maxCut, (path[yr-1]-path[yr])/path[yr-1]);
+      }
+      return {maxCut, low: low/path.length, avg: sum/path.length};
+    });
+    if(yVar==='maxCut') return percentile(perPath.map(x=>x.maxCut), 0.5)*100;
+    if(yVar==='lowYears') return perPath.reduce((a,x)=>a+x.low,0)/perPath.length*100;
+    return percentile(perPath.map(x=>x.avg), 0.10)*100;
+  }
   return rate*100;
 }
 
@@ -1611,7 +1732,7 @@ $('cmpBtn').onclick = ()=>{
   setTimeout(runComparison, 30);
 };
 
-function runComparison(){
+function readSettings(){
   const horizon = parseInt($('horizon').value);
   const fee = parseFloat($('fee').value)/100;
   const targetProb = parseFloat($('prob').value)/100;
@@ -1639,6 +1760,11 @@ function runComparison(){
 
   const baseCfg = {mode, simpleParams, fee, horizon, fcFloorFrac, fcCapFrac, gCapFrac, gFloorFrac, iThreshFrac, actAge,
                    ratchetThreshold, ratchetStep, ratchetMinYears, acCut, acUp, acDown, acCut2, acYears, wEq:wEqCurrent};
+  return {baseCfg, targetProb, floorFrac, horizon};
+}
+
+function runComparison(){
+  const {baseCfg, targetProb, floorFrac, horizon} = readSettings();
 
   const xVar = $('cmpXVar').value;
   const yVar = $('cmpYVar').value;
@@ -1647,8 +1773,10 @@ function runComparison(){
 
   const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial','annualcheck'];
   const series = {};
+  const limitedPts = {};
   for(const strat of strategies){
-    series[strat] = xVals.map(x=>{
+    limitedPts[strat] = [];
+    series[strat] = xVals.map((x,xi)=>{
       let cfg = {...baseCfg, strategy:strat};
       let prob = targetProb, floor = floorFrac;
       if(xVar==='alloc') cfg.wEq = x/100;
@@ -1656,35 +1784,39 @@ function runComparison(){
       else if(xVar==='prob') prob = x/100;
       else if(xVar==='floorT') floor = x/100;
       const rate = solveRateFast(cfg, prob, floor);
+      limitedPts[strat][xi] = lastSolveLimited;
       return computeYMetric(yVar, cfg, rate, prob, floor);
     });
   }
 
   const yFmt = yVar==='wealth' ? (v=>v.toFixed(0)+'%') : (v=>v.toFixed(1)+'%');
-  const {clipped} = drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt, CMP_X_LABEL[xVar], CMP_Y_LABEL[yVar]);
+  const {clipped} = drawMultiLine($('cmpChart'), xVals, series, xConf.fmt, yFmt, CMP_X_LABEL[xVar], CMP_Y_LABEL[yVar], limitedPts);
   $('cmpLegend').innerHTML = strategies.map(s=>{
     const note = s==='actuarial' ? ' (unvalidated, dashed)' : '';
     return `<span><i class="swatch" style="background:${STRAT_COLORS[s]}"></i>${STRAT_LABEL[s]}${note}</span>`;
-  }).join('') + (clipped ? `<span style="color:var(--rust);">&#9888; one or more points run above the visible range and are pinned at the top edge</span>` : '');
+  }).join('') + (Object.values(limitedPts).some(a=>a.some(Boolean)) ? `<span style="color:var(--rust);">&#9675; hollow points: no exact solution at that setting &mdash; the rate shown is the strategy's limit, not an answer to your downside target</span>` : '') + (clipped ? `<span style="color:var(--rust);">&#9888; one or more points run above the visible range and are pinned at the top edge</span>` : '');
   $('cmpWrap').style.display = 'block';
 
   // Snapshot table: all 4 categories at once, at current (non-swept) settings -- complements the
   // sweep chart above, which only shows one metric across a range of one variable.
-  const METRIC_KEYS = ['rate','vol','wealth','depletion'];
-  const METRIC_COL_LABEL = {rate:'Initial Rate', vol:'Yr-to-Yr Volatility', wealth:'Median Wealth', depletion:'Depletion Chance'};
-  const METRIC_BETTER = {rate:'high', vol:'low', wealth:'high', depletion:'low'};
+  const METRIC_KEYS = ['rate','vol','wealth','depletion','maxCut','lowYears','p10spend'];
+  const METRIC_COL_LABEL = {rate:'Initial Rate', vol:'Yr-to-Yr Volatility', wealth:'Median Wealth', depletion:'Depletion Chance', maxCut:'Largest 1-Yr Cut', lowYears:'Yrs Below 80% of Start', p10spend:'Worst-10% Spending'};
+  const METRIC_BETTER = {rate:'high', vol:'low', wealth:'high', depletion:'low', maxCut:'low', lowYears:'low', p10spend:'high'};
   const snapshot = {};
+  const snapLimited = {};
   for(const strat of strategies){
     const cfg = {...baseCfg, strategy:strat};
     const rate = solveRate(cfg, targetProb, floorFrac);
+    snapLimited[strat] = lastSolveLimited;
     const row = {};
     for(const m of METRIC_KEYS) row[m] = computeYMetric(m, cfg, rate, targetProb, floorFrac);
     snapshot[strat] = row;
   }
   const bestPerMetric = {};
   for(const m of METRIC_KEYS){
-    let best = strategies[0];
-    for(const s of strategies){
+    const pool = strategies.some(s=>!snapLimited[s]) ? strategies.filter(s=>!snapLimited[s]) : strategies;
+    let best = pool[0];
+    for(const s of pool){
       const better = METRIC_BETTER[m]==='high' ? snapshot[s][m] > snapshot[best][m] : snapshot[s][m] < snapshot[best][m];
       if(better) best = s;
     }
@@ -1696,9 +1828,9 @@ function runComparison(){
       const v = snapshot[s][m];
       const disp = m==='wealth' ? v.toFixed(0)+'%' : v.toFixed(1)+'%';
       const cls = bestPerMetric[m]===s ? ' class="best"' : '';
-      return `<td${cls}>${disp}</td>`;
+      return `<td${cls}${snapLimited[s] ? ' style="opacity:.55;font-style:italic;"' : ''}>${disp}</td>`;
     }).join('');
-    const note = s==='actuarial' ? ' <span style="color:var(--ink-soft);font-size:10px;">(unvalidated)</span>' : '';
+    const note = (s==='actuarial' ? ' <span style="color:var(--ink-soft);font-size:10px;">(unvalidated)</span>' : '') + (snapLimited[s] ? ' <span style="color:var(--rust);font-size:10px;">(no exact solution &mdash; limit shown)</span>' : '');
     return `<tr><td>${STRAT_LABEL[s]}${note}</td>${cells}</tr>`;
   }).join('');
   $('cmpTable').innerHTML = `<thead>${headerRow}</thead><tbody>${bodyRows}</tbody>`;
@@ -1736,6 +1868,118 @@ document.querySelectorAll('.ref-rate-btn').forEach(btn=>{
     }, 30);
   };
 });
+
+
+// ---------- Historical replay ----------
+const REPLAY_LABELS = {1929:'Great Depression', 1937:'1937 recession', 1966:'slow grind / stagflation', 1973:'1973 oil shock & stagflation', 1968:'late-60s start', 2000:'dot-com bust', 1999:'late-90s peak', 1982:'start of the long bull market', 1949:'post-war boom'};
+function fillReplayYears(){
+  const H = parseInt($('horizon').value);
+  const last = HIST[HIST.length-1].y;
+  const sel = $('replayYear');
+  const prev = sel.value;
+  let opts = '';
+  for(const h of HIST){
+    if(h.y + H - 1 > last) break;
+    opts += `<option value="${h.y}">${h.y}${REPLAY_LABELS[h.y] ? ' \u2014 '+REPLAY_LABELS[h.y] : ''}</option>`;
+  }
+  sel.innerHTML = opts;
+  if(prev && sel.querySelector(`option[value="${prev}"]`)) sel.value = prev; else if(sel.querySelector('option[value="1966"]')) sel.value = '1966';
+}
+$('horizon').addEventListener('input', fillReplayYears);
+fillReplayYears();
+
+$('replayBtn').onclick = ()=>{
+  $('replayBtn').disabled = true;
+  $('replayBtn').textContent = 'Replaying\u2026';
+  setTimeout(runReplay, 30);
+};
+function runReplay(){
+  const {baseCfg, targetProb, floorFrac, horizon} = readSettings();
+  const sy = parseInt($('replayYear').value);
+  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial','annualcheck'];
+  const seq = HIST.filter(h=>h.y>=sy && h.y<sy+horizon).map(h=>({s:h.s/100, b:h.b/100, infl:h.i/100}));
+  if(seq.length < horizon){
+    $('replayNote').textContent = 'Not enough historical data after that start year for your horizon.';
+    $('replayWrap').style.display = 'block';
+    $('replayBtn').disabled = false; $('replayBtn').textContent = 'Replay this period';
+    return;
+  }
+  const wealthSeries = {}, spendSeries = {}, rows = {};
+  for(const strat of strategies){
+    const cfg = {...baseCfg, strategy:strat};
+    const rate = solveRateFast(cfg, targetProb, floorFrac);   // solved under the user's own market assumptions
+    const limited = lastSolveLimited;
+    replaySeq = seq; replayIdx = 0;
+    let sim;
+    try { sim = simulate({...cfg, mode:'hist', rate}, 1, true); }
+    finally { replaySeq = null; replayIdx = 0; }
+    const w = sim.wealthPaths[0].map(v=>v*100);
+    const sp = sim.spendPaths[0].map(v=>v*100);
+    wealthSeries[strat] = w; spendSeries[strat] = sp;
+    const avg = sp.reduce((a,b)=>a+b,0)/sp.length;
+    rows[strat] = {rate:rate*100, avg, min:Math.min(...sp), end:w[w.length-1], limited};
+  }
+  const yearsW = Array.from({length:horizon+1}, (_,i)=>sy+i);
+  const yearsS = Array.from({length:horizon}, (_,i)=>sy+i);
+  // Both charts share the same strategy keys; reuse the multi-line chart.
+  drawMultiLine($('replayWealth'), yearsW, wealthSeries, v=>String(v), v=>v.toFixed(0)+'%', 'Year', 'Portfolio, % of start');
+  drawMultiLine($('replaySpend'), yearsS, spendSeries, v=>String(v), v=>v.toFixed(1)+'%', 'Year', 'Spending, % of start');
+  $('replayLegend').innerHTML = strategies.map(st=>`<span><i class="swatch" style="background:${STRAT_COLORS[st]}"></i>${STRAT_LABEL[st]}${st==='actuarial' ? ' (unvalidated, dashed)' : ''}</span>`).join('');
+  const bestEnd = Math.max(...strategies.map(st=>rows[st].end));
+  const body = strategies.map(st=>{
+    const r = rows[st];
+    const note = (st==='actuarial' ? ' <span style="color:var(--ink-soft);font-size:10px;">(unvalidated)</span>' : '') + (r.limited ? ' <span style="color:var(--rust);font-size:10px;">(no exact solution &mdash; limit shown)</span>' : '');
+    const endCls = (r.end>=bestEnd-1e-9) ? ' class="best"' : '';
+    return `<tr><td>${STRAT_LABEL[st]}${note}</td><td>${r.rate.toFixed(2)}%</td><td>${r.avg.toFixed(2)}%</td><td>${r.min.toFixed(2)}%</td><td${endCls}>${r.end.toFixed(0)}%</td></tr>`;
+  }).join('');
+  $('replayTable').innerHTML = `<thead><tr><th>Strategy</th><th>Starting rate</th><th>Average spending</th><th>Lowest year</th><th>Ending portfolio</th></tr></thead><tbody>${body}</tbody>`;
+  const depleted = strategies.filter(st=>rows[st].end < 0.5).map(st=>STRAT_LABEL[st]);
+  $('replayNote').innerHTML = `Replaying ${sy}&ndash;${sy+horizon-1}${REPLAY_LABELS[sy] ? ' ('+REPLAY_LABELS[sy]+')' : ''}. This is one real path, not a probability: a strategy can look fine or poor in any single period. ${depleted.length ? '<b style="color:var(--rust);">Portfolio ran out: '+depleted.join(', ')+'.</b> ' : ''}Starting rates are solved from your current assumptions and may differ from what the historical average implies.`;
+  $('replayWrap').style.display = 'block';
+  $('replayBtn').disabled = false;
+  $('replayBtn').textContent = 'Replay this period';
+}
+
+$('gridBtn').onclick = ()=>{
+  $('gridBtn').disabled = true; $('gridBtn').textContent = 'Running\u2026';
+  setTimeout(runStressGrid, 30);
+};
+function runStressGrid(){
+  const {baseCfg, targetProb, floorFrac, horizon} = readSettings();
+  const strategies = ['constant','fixedpct','floorceil','ratchet','guardrails','inflrule','actuarial','annualcheck'];
+  const years = [1929,1937,1966,1973,1982].filter(y=>HIST.some(h=>h.y===y) && y+horizon-1 <= HIST[HIST.length-1].y);
+  const pick = $('gridStrat').value;
+  // Columns are either the eight strategies at the current allocation, or one strategy at 30-100% stocks.
+  const cols = pick==='all'
+    ? strategies.map(st=>({key:st, label:STRAT_LABEL[st], cfg:{...baseCfg, strategy:st}}))
+    : [0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0].map(eq=>({key:'eq'+eq, label:Math.round(eq*100)+'% stocks', cfg:{...baseCfg, strategy:pick, wEq:eq}}));
+  const rates = {}, limited = {};
+  for(const c of cols){ rates[c.key] = solveRateFast(c.cfg, targetProb, floorFrac); limited[c.key] = lastSolveLimited; }
+  const cell = {};
+  for(const y of years){
+    const seq = HIST.filter(h=>h.y>=y && h.y<y+horizon).map(h=>({s:h.s/100, b:h.b/100, infl:h.i/100}));
+    cell[y] = {};
+    for(const c of cols){
+      replaySeq = seq; replayIdx = 0;
+      try { const sim = simulate({...c.cfg, mode:'hist', rate:rates[c.key]}, 1, true); const w = sim.wealthPaths[0]; cell[y][c.key] = w[w.length-1]*100; }
+      finally { replaySeq = null; replayIdx = 0; }
+    }
+  }
+  const head = `<thead><tr><th>Start year</th>${cols.map(c=>`<th>${c.label}${limited[c.key] ? ' *' : ''}</th>`).join('')}</tr></thead>`;
+  const body = years.map(y=>{
+    const best = Math.max(...cols.map(c=>cell[y][c.key]));
+    return `<tr><td>${y}${REPLAY_LABELS[y] ? ' <span style="color:var(--ink-soft);font-size:10px;">'+REPLAY_LABELS[y]+'</span>' : ''}</td>${cols.map(c=>{
+      const v = cell[y][c.key];
+      const style = v < 0.5 ? ' style="color:var(--rust);font-weight:600;"' : '';
+      const cls = (v>=best-1e-9 && best>=0.5) ? ' class="best"' : '';
+      return `<td${cls}${style}>${v<0.5 ? 'ran out' : v.toFixed(0)+'%'}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  $('gridTable').innerHTML = head + `<tbody>${body}</tbody>`;
+  $('gridNote').innerHTML = (years.length ? '' : 'No key start years fit your horizon.') + 'Each strategy starts at the rate it solves to under your current settings; these are real historical paths, not probabilities. ' + (cols.some(c=>limited[c.key]) ? '* = no exact solution at these settings, so that column starts at the strategy\'s limit. ' : '') + (pick==='all' ? '' : 'Each column re-solves the starting rate at its own allocation.');
+  $('gridWrap').style.display = 'block';
+  $('gridBtn').disabled = false; $('gridBtn').textContent = 'Stress grid: key start years';
+}
 
 </script>
 </body>
